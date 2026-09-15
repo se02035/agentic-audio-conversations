@@ -130,9 +130,14 @@ class JobManager:
         self._handles_lock = threading.Lock()
         self._cached_handles: CloudHandles | None = None
         self._semaphore = asyncio.Semaphore(settings.podcast_max_concurrent_jobs)
+        pool_size = max(settings.podcast_max_concurrent_jobs, 4)
         self._executor = ThreadPoolExecutor(
-            max_workers=max(settings.podcast_max_concurrent_jobs, 4),
+            max_workers=pool_size,
             thread_name_prefix="podcast-tts",
+        )
+        self._control_executor = ThreadPoolExecutor(
+            max_workers=pool_size,
+            thread_name_prefix="podcast-ctl",
         )
 
     def parse_script(self, payload: str) -> PodcastScript:
@@ -185,7 +190,13 @@ class JobManager:
         with self._lock:
             self._jobs[job_id] = record
             self._cancel_events[job_id] = cancel_event
-        await loop.run_in_executor(self._executor, self._persist_record, record)
+        try:
+            await loop.run_in_executor(self._control_executor, self._persist_record, record)
+        except BaseException:
+            with self._lock:
+                self._jobs.pop(job_id, None)
+                self._cancel_events.pop(job_id, None)
+            raise
         parent_ctx = otel_context.get_current()
         task = asyncio.create_task(
             self._run_job(job_id, script, translate_to, parent_ctx),
@@ -203,7 +214,7 @@ class JobManager:
         loop = asyncio.get_running_loop()
         if current is not None:
             return await loop.run_in_executor(
-                self._executor,
+                self._control_executor,
                 self._maybe_fail_stale,
                 current,
                 True,
@@ -214,7 +225,7 @@ class JobManager:
             raise JobNotFound(job_id)
         record = JobRecord.model_validate(payload)
         return await loop.run_in_executor(
-            self._executor,
+            self._control_executor,
             self._maybe_fail_stale,
             record,
             False,
@@ -244,7 +255,7 @@ class JobManager:
                 self._jobs[job_id] = updated
         if updated is not None:
             await asyncio.get_running_loop().run_in_executor(
-                self._executor, self._persist_record, updated
+                self._control_executor, self._persist_record, updated
             )
             return updated.model_copy()
 
@@ -264,12 +275,33 @@ class JobManager:
             }
         )
         await asyncio.get_running_loop().run_in_executor(
-            self._executor, self._persist_record, cancelled
+            self._control_executor, self._persist_record, cancelled
         )
         return cancelled
 
     def _maybe_fail_stale(self, record: JobRecord, store_in_memory: bool) -> JobRecord:
         """Turn stale queued/running records into failed (no TTS resume)."""
+        if store_in_memory:
+            with self._lock:
+                current = self._jobs.get(record.job_id)
+                if current is None:
+                    return record.model_copy()
+                if current.status not in {JobStatus.queued, JobStatus.running}:
+                    return current.model_copy()
+                if not self._is_stale(current):
+                    return current.model_copy()
+                failed = current.model_copy(
+                    update={
+                        "status": JobStatus.failed,
+                        "error": _STALE_ERROR,
+                        "progress": None,
+                        "updated_at": utc_now(),
+                    }
+                )
+                self._jobs[record.job_id] = failed
+            self._persist_record(failed)
+            return failed.model_copy()
+
         if record.status not in {JobStatus.queued, JobStatus.running}:
             return record.model_copy()
         if not self._is_stale(record):
@@ -282,14 +314,6 @@ class JobManager:
                 "updated_at": utc_now(),
             }
         )
-        if store_in_memory:
-            with self._lock:
-                current = self._jobs.get(record.job_id)
-                if current is not None and current.status in {
-                    JobStatus.queued,
-                    JobStatus.running,
-                }:
-                    self._jobs[record.job_id] = failed
         self._persist_record(failed)
         return failed.model_copy()
 
@@ -356,7 +380,9 @@ class JobManager:
                     self._mark(job_id, JobStatus.failed, error=str(exc))
                 finally:
                     self._semaphore.release()
-                    self._persist_job(job_id)
+                    await asyncio.get_running_loop().run_in_executor(
+                        self._control_executor, self._persist_job, job_id
+                    )
         finally:
             otel_context.detach(token)
 
@@ -522,7 +548,7 @@ class JobManager:
                 return None
             return parsed
 
-        return await asyncio.get_running_loop().run_in_executor(self._executor, _load)
+        return await asyncio.get_running_loop().run_in_executor(self._control_executor, _load)
 
 
 def default_clients_factory() -> CloudHandles:

@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -86,3 +91,130 @@ def test_work_sync_does_not_succeed_failed_job(sample_script_yaml: str) -> None:
         manager._cancel_events[job_id] = threading.Event()
     manager._work_sync(job_id, script, None, otel_context.get_current())
     assert manager._jobs[job_id].status == JobStatus.failed
+
+
+async def test_start_rolls_back_memory_when_queued_persist_fails(sample_script_yaml: str) -> None:
+    """A failed initial status.json write must not leave a queued job in memory."""
+    manager, _gcs = job_manager(instant_synth)
+
+    def boom(_client: Any, _uri: str, _data: bytes, _content_type: str) -> None:
+        raise RuntimeError("gcs down")
+
+    manager._upload_bytes = boom
+    with pytest.raises(RuntimeError, match="gcs down"):
+        await manager.start(sample_script_yaml)
+    assert manager._jobs == {}
+    assert manager._cancel_events == {}
+    assert manager._tasks == {}
+
+
+def test_maybe_fail_stale_keeps_fresh_in_memory_record() -> None:
+    """A stale snapshot must not fail a job that has since heartbeated."""
+    manager, gcs = job_manager(instant_synth)
+    job_id = "live-job"
+    prefix = manager.settings.job_prefix_uri(job_id)
+    stale = JobRecord(
+        job_id=job_id,
+        status=JobStatus.running,
+        audio_uri=f"{prefix}/audio.wav",
+        status_uri=f"{prefix}/status.json",
+        progress="batch 1/9",
+        updated_at=utc_now() - timedelta(hours=2),
+    )
+    fresh = stale.model_copy(update={"updated_at": utc_now(), "progress": "batch 2/9"})
+    with manager._lock:
+        manager._jobs[job_id] = fresh
+        manager._cancel_events[job_id] = threading.Event()
+    result = manager._maybe_fail_stale(stale, True)
+    assert result.status == JobStatus.running
+    assert result.progress == "batch 2/9"
+    assert manager._jobs[job_id].status == JobStatus.running
+    assert f"{prefix}/status.json" not in gcs.objects
+
+
+def test_maybe_fail_stale_preserves_terminal_in_memory_record() -> None:
+    """A stale running snapshot must not overwrite a succeeded in-memory job."""
+    manager, gcs = job_manager(instant_synth)
+    job_id = "done-job"
+    prefix = manager.settings.job_prefix_uri(job_id)
+    succeeded = JobRecord(
+        job_id=job_id,
+        status=JobStatus.succeeded,
+        audio_uri=f"{prefix}/audio.wav",
+        status_uri=f"{prefix}/status.json",
+        updated_at=utc_now(),
+    )
+    stale_running = succeeded.model_copy(
+        update={"status": JobStatus.running, "updated_at": utc_now() - timedelta(hours=2)}
+    )
+    with manager._lock:
+        manager._jobs[job_id] = succeeded
+        manager._cancel_events[job_id] = threading.Event()
+    result = manager._maybe_fail_stale(stale_running, True)
+    assert result.status == JobStatus.succeeded
+    assert manager._jobs[job_id].status == JobStatus.succeeded
+    assert f"{prefix}/status.json" not in gcs.objects
+
+
+def test_maybe_fail_stale_fails_when_current_is_still_stale() -> None:
+    """Queued/running jobs that are still stale become failed and are persisted."""
+    manager, gcs = job_manager(instant_synth)
+    job_id = "stale-mem"
+    prefix = manager.settings.job_prefix_uri(job_id)
+    stale = JobRecord(
+        job_id=job_id,
+        status=JobStatus.queued,
+        audio_uri=f"{prefix}/audio.wav",
+        status_uri=f"{prefix}/status.json",
+        updated_at=utc_now() - timedelta(hours=2),
+    )
+    with manager._lock:
+        manager._jobs[job_id] = stale
+        manager._cancel_events[job_id] = threading.Event()
+    result = manager._maybe_fail_stale(stale, True)
+    assert result.status == JobStatus.failed
+    assert manager._jobs[job_id].status == JobStatus.failed
+    stored = json.loads(gcs.objects[f"{prefix}/status.json"].decode("utf-8"))
+    assert stored["status"] == "failed"
+
+
+async def test_status_and_cancel_stay_responsive_when_worker_pool_is_busy() -> None:
+    """Status and cancel must not wait on the TTS worker executor."""
+    manager, _gcs = job_manager(instant_synth)
+    job_id = "ctl-job"
+    prefix = manager.settings.job_prefix_uri(job_id)
+    record = JobRecord(
+        job_id=job_id,
+        status=JobStatus.queued,
+        audio_uri=f"{prefix}/audio.wav",
+        status_uri=f"{prefix}/status.json",
+        updated_at=utc_now(),
+    )
+    with manager._lock:
+        manager._jobs[job_id] = record
+        manager._cancel_events[job_id] = threading.Event()
+
+    manager._executor.shutdown(wait=False)
+    blocked = threading.Event()
+    release = threading.Event()
+    manager._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="podcast-tts")
+
+    def occupy() -> None:
+        blocked.set()
+        assert release.wait(timeout=5)
+
+    occupy_future = asyncio.get_running_loop().run_in_executor(manager._executor, occupy)
+    try:
+        assert await asyncio.to_thread(blocked.wait, 2)
+        t0 = time.perf_counter()
+        status = await manager.get_status(job_id)
+        assert time.perf_counter() - t0 < 0.4
+        assert status.status == JobStatus.queued
+        t0 = time.perf_counter()
+        cancelled = await manager.cancel(job_id)
+        assert time.perf_counter() - t0 < 0.4
+        assert cancelled.status == JobStatus.cancelled
+    finally:
+        release.set()
+        await occupy_future
+        manager._executor.shutdown(wait=False)

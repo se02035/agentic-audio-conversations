@@ -226,6 +226,16 @@ def translate_command(
     console.print(f"[bold green]Translated script saved to[/bold green] [cyan]{output}[/cyan]")
 
 
+def _language_matches(current: str, target: str) -> bool:
+    """Return True when ``current`` is already the translation target ``target``.
+
+    ``de-DE`` matches ``de-DE`` and ``de``; ``de`` does not match ``de-DE``.
+    """
+    current_lang = current.lower()
+    target_lang = target.lower()
+    return current_lang == target_lang or current_lang.startswith(f"{target_lang}-")
+
+
 @main.command(name="synthesize")
 @click.option(
     "--script",
@@ -283,7 +293,21 @@ def synthesize_command(
             console.print(f"[bold red]{exc}[/bold red]")
             sys.exit(1)
 
-    if language:
+    source_language = podcast_script.metadata.language_code
+    will_translate = False
+    if translate_to is not None:
+        will_translate = not _language_matches(source_language, translate_to)
+    if language and translate_to:
+        same_locale = _language_matches(language, translate_to) or _language_matches(
+            translate_to, language
+        )
+        if not same_locale:
+            console.print(
+                f"[bold red]--language {language} conflicts with --translate-to "
+                f"{translate_to}.[/bold red]"
+            )
+            sys.exit(1)
+    if language and not will_translate:
         podcast_script = remap_script_voices(podcast_script, language)
 
     try:
@@ -293,9 +317,7 @@ def synthesize_command(
         sys.exit(1)
 
     if translate_to:
-        current_lang = podcast_script.metadata.language_code.lower()
-        target_lang = translate_to.lower()
-        if current_lang == target_lang or current_lang.startswith(f"{target_lang}-"):
+        if not will_translate:
             console.print(f"[dim]Script is already in {translate_to}; skipping translation.[/dim]")
         else:
             with console.status(

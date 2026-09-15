@@ -228,6 +228,95 @@ class TestCLI:
         assert submitted.metadata.language_code == "de-DE"
         assert submitted.voices["guest"].name == "de-DE-Chirp3-HD-Aoede"
 
+    @patch("tts_podcast_creator.cli.assert_voices_in_catalog")
+    @patch("tts_podcast_creator.cli.synthesize_script")
+    @patch("tts_podcast_creator.cli.eu_tts_client")
+    @patch("tts_podcast_creator.cli.get_credentials_and_project")
+    def test_matching_language_and_translate_to_still_translates(
+        self,
+        mock_auth: MagicMock,
+        mock_eu_client: MagicMock,
+        mock_synth: MagicMock,
+        mock_catalog: MagicMock,
+        tmp_path: Path,
+        sample_script_yaml: str,
+        sample_german_script_dict: dict[str, Any],
+    ) -> None:
+        """Matching --language/--translate-to still translates from the original locale."""
+        mock_auth.return_value = (MagicMock(), "test-proj")
+        out_file = tmp_path / "episode.wav"
+        mock_synth.return_value = out_file
+        translated = PodcastScript.model_validate(sample_german_script_dict)
+        script_file = tmp_path / "script.yaml"
+        script_file.write_text(sample_script_yaml)
+        runner = CliRunner()
+        with patch("tts_podcast_creator.cli.PodcastTranslator") as mock_trans_cls:
+            mock_translator = MagicMock()
+            mock_translator.translate_script.return_value = translated
+            mock_trans_cls.return_value = mock_translator
+            result = runner.invoke(
+                main,
+                [
+                    "synthesize",
+                    "-s",
+                    str(script_file),
+                    "-o",
+                    str(out_file),
+                    "-p",
+                    "test-proj",
+                    "--language",
+                    "de-DE",
+                    "--translate-to",
+                    "de-DE",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        mock_translator.translate_script.assert_called_once()
+        source_script = mock_translator.translate_script.call_args.args[0]
+        assert source_script.metadata.language_code == "en-US"
+        assert "Welcome" in source_script.turns[0].text
+        submitted = mock_synth.call_args.args[1]
+        assert submitted.metadata.language_code == "de-DE"
+        assert "Willkommen" in submitted.turns[0].text
+
+    @patch("tts_podcast_creator.cli.assert_voices_in_catalog")
+    @patch("tts_podcast_creator.cli.synthesize_script")
+    @patch("tts_podcast_creator.cli.eu_tts_client")
+    @patch("tts_podcast_creator.cli.get_credentials_and_project")
+    def test_conflicting_language_and_translate_to_are_rejected(
+        self,
+        mock_auth: MagicMock,
+        mock_eu_client: MagicMock,
+        mock_synth: MagicMock,
+        mock_catalog: MagicMock,
+        tmp_path: Path,
+        sample_script_yaml: str,
+    ) -> None:
+        """--language and --translate-to with different locales fail before remap."""
+        mock_auth.return_value = (MagicMock(), "test-proj")
+        out_file = tmp_path / "episode.wav"
+        script_file = tmp_path / "script.yaml"
+        script_file.write_text(sample_script_yaml)
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            [
+                "synthesize",
+                "-s",
+                str(script_file),
+                "-o",
+                str(out_file),
+                "--language",
+                "de-DE",
+                "--translate-to",
+                "fr-FR",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "conflicts" in result.output
+        mock_synth.assert_not_called()
+        mock_catalog.assert_not_called()
+
     @patch("tts_podcast_creator.cli.download_file")
     @patch("tts_podcast_creator.cli.storage.Client")
     @patch("tts_podcast_creator.cli.get_credentials_and_project")

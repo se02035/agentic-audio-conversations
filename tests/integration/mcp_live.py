@@ -153,6 +153,7 @@ async def live_mcp_http(
         except (TimeoutError, asyncio.CancelledError):
             serve_task.cancel()
         manager._executor.shutdown(wait=False)
+        manager._control_executor.shutdown(wait=False)
 
 
 def assert_mono_wav(path: Path, *, min_duration_secs: float | None = None) -> float:
