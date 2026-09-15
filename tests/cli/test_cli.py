@@ -162,6 +162,72 @@ class TestCLI:
         assert mock_synth.call_args.kwargs["output_gcs_uri"] is None
         mock_storage_cls.assert_not_called()
 
+    def test_validate_command_rejects_oversize(
+        self, tmp_path: Path, sample_script_yaml: str
+    ) -> None:
+        """Files larger than PODCAST_MAX_SCRIPT_BYTES are rejected before parse."""
+        script_file = tmp_path / "valid.yaml"
+        script_file.write_text(sample_script_yaml)
+        runner = CliRunner()
+        with patch("tts_podcast_creator.cli.Settings") as mock_settings:
+            mock_settings.return_value.podcast_max_script_bytes = 32
+            result = runner.invoke(main, ["validate", "-s", str(script_file)])
+        assert result.exit_code != 0
+        assert "bytes" in result.output.lower()
+
+    @patch("tts_podcast_creator.cli.assert_voices_in_catalog")
+    @patch("tts_podcast_creator.cli.synthesize_script")
+    @patch("tts_podcast_creator.cli.eu_tts_client")
+    @patch("tts_podcast_creator.cli.get_credentials_and_project")
+    def test_language_override_remaps_voices_before_catalog(
+        self,
+        mock_auth: MagicMock,
+        mock_eu_client: MagicMock,
+        mock_synth: MagicMock,
+        mock_catalog: MagicMock,
+        tmp_path: Path,
+        sample_script_yaml: str,
+    ) -> None:
+        """--language remaps voices and is applied before list_voices, without translating."""
+        mock_auth.return_value = (MagicMock(), "test-proj")
+        out_file = tmp_path / "episode.wav"
+        mock_synth.return_value = out_file
+        cataloged: list[Any] = []
+
+        def capture(_client: Any, script: PodcastScript) -> None:
+            cataloged.append(script)
+
+        mock_catalog.side_effect = capture
+        script_file = tmp_path / "script.yaml"
+        script_file.write_text(sample_script_yaml)
+        runner = CliRunner()
+        with patch("tts_podcast_creator.cli.PodcastTranslator") as mock_trans_cls:
+            result = runner.invoke(
+                main,
+                [
+                    "synthesize",
+                    "-s",
+                    str(script_file),
+                    "-o",
+                    str(out_file),
+                    "-p",
+                    "test-proj",
+                    "--language",
+                    "de-DE",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        mock_trans_cls.assert_not_called()
+        assert cataloged
+        checked = cataloged[0]
+        assert checked.metadata.language_code == "de-DE"
+        assert checked.voices["host"].name == "de-DE-Chirp3-HD-Fenrir"
+        assert checked.voices["host"].language_code == "de-DE"
+        assert "Welcome" in checked.turns[0].text
+        submitted = mock_synth.call_args.args[1]
+        assert submitted.metadata.language_code == "de-DE"
+        assert submitted.voices["guest"].name == "de-DE-Chirp3-HD-Aoede"
+
     @patch("tts_podcast_creator.cli.download_file")
     @patch("tts_podcast_creator.cli.storage.Client")
     @patch("tts_podcast_creator.cli.get_credentials_and_project")

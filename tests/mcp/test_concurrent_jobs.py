@@ -95,7 +95,7 @@ async def test_third_job_queued_when_semaphore_full(sample_script_yaml: str) -> 
     )
     async with Client(mcp) as client:
         first = tool_data(await client.call_tool("start_podcast", {"script": sample_script_yaml}))
-        assert entered.wait(timeout=2)
+        assert await asyncio.to_thread(entered.wait, 2)
         t0 = time.perf_counter()
         second = tool_data(await client.call_tool("start_podcast", {"script": sample_script_yaml}))
         assert time.perf_counter() - t0 < 0.4

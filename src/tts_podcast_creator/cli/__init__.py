@@ -23,6 +23,7 @@ from tts_podcast_creator.logic.client import (
 )
 from tts_podcast_creator.logic.exceptions import GcsResidencyError, VoiceCatalogError
 from tts_podcast_creator.logic.models import PodcastScript
+from tts_podcast_creator.logic.settings import Settings
 from tts_podcast_creator.logic.storage import (
     download_file,
     non_eu_bucket_warning,
@@ -30,7 +31,7 @@ from tts_podcast_creator.logic.storage import (
 )
 from tts_podcast_creator.logic.telemetry import setup_telemetry
 from tts_podcast_creator.logic.template import create_script_template
-from tts_podcast_creator.logic.translator import PodcastTranslator
+from tts_podcast_creator.logic.translator import PodcastTranslator, remap_script_voices
 
 load_dotenv()
 
@@ -105,6 +106,14 @@ def template_command(
 )
 def validate_command(script: Path) -> None:
     """Check script schema, speaker aliases, and size metrics."""
+    max_bytes = Settings().podcast_max_script_bytes
+    size = script.stat().st_size
+    if size > max_bytes:
+        console.print(
+            f"[bold red]Script validation failed:[/bold red] "
+            f"Script file is {size} bytes; max is {max_bytes} (PODCAST_MAX_SCRIPT_BYTES)."
+        )
+        sys.exit(1)
     try:
         podcast_script = PodcastScript.from_path(script)
     except Exception as exc:
@@ -274,6 +283,9 @@ def synthesize_command(
             console.print(f"[bold red]{exc}[/bold red]")
             sys.exit(1)
 
+    if language:
+        podcast_script = remap_script_voices(podcast_script, language)
+
     try:
         assert_voices_in_catalog(tts_client, podcast_script)
     except VoiceCatalogError as exc:
@@ -296,9 +308,6 @@ def synthesize_command(
             except VoiceCatalogError as exc:
                 console.print(f"[bold red]{exc}[/bold red]")
                 sys.exit(1)
-
-    if language:
-        podcast_script.metadata.language_code = language
 
     with console.status(f"[bold cyan]Synthesizing via {EU_TTS_ENDPOINT}..."):
         dest = synthesize_script(

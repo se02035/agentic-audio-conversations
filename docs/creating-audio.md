@@ -14,7 +14,7 @@ cp .env.example .env
 uv sync --all-extras
 ```
 
-Set `GOOGLE_CLOUD_PROJECT` in `.env`. MCP also needs `PODCAST_GCS_BUCKET` (EU bucket: `EU`, `EUR4`, or `europe-*`). Optional live-test URI: `PODCAST_TEST_GCS_URI`. Full knobs: [`.env.example`](../.env.example).
+Set `GOOGLE_CLOUD_PROJECT` in `.env`. MCP also needs `PODCAST_GCS_BUCKET` on the EU allowlist (`EU`, `EUR4`, `europe-central2`, `europe-north1`, `europe-north2`, `europe-southwest1`, `europe-west1`, `europe-west3`, `europe-west4`, `europe-west8`, `europe-west9`, `europe-west10`, `europe-west12`). Optional live-test URI: `PODCAST_TEST_GCS_URI`. Full knobs: [`.env.example`](../.env.example).
 
 MCP startup and `synthesize --gcs-uri` reject non-EU buckets. `download` warns and still fetches. The MCP server is anonymous; it uses **ADC in the server process** for TTS, Translation, and GCS.
 
@@ -69,7 +69,7 @@ uv run tts-podcast-creator download \
 
 ## MCP HTTP server
 
-Streamable HTTP only (no stdio), single process, no MCP authentication. Long synthesis is an **app-level job**: `start_podcast` returns immediately with a `job_id` and `gs://` URIs after writing `status.json` as `queued` and checking EU `list_voices`. Poll `get_podcast_status`. There is **no download tool** — fetch the WAV from GCS with your own credentials.
+Streamable HTTP only (no stdio), single process, no MCP authentication. `MCP_HOST` must be a loopback address (`127.0.0.1`, `::1`, or `localhost`). Long synthesis is an **app-level job**: `start_podcast` returns immediately with a `job_id` and `gs://` URIs after writing `status.json` as `queued` and checking EU `list_voices`. Poll `get_podcast_status`. There is **no download tool** — fetch the WAV from GCS with your own credentials.
 
 Required env: `GOOGLE_CLOUD_PROJECT`, `PODCAST_GCS_BUCKET`.
 

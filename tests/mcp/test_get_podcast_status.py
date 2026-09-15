@@ -63,7 +63,7 @@ async def test_get_podcast_status_tracks_running_progress_then_succeeded(
     async with Client(mcp) as client:
         started = tool_data(await client.call_tool("start_podcast", {"script": sample_script_yaml}))
         job_id = started["job_id"]
-        assert entered.wait(timeout=2)
+        assert await asyncio.to_thread(entered.wait, 2)
         running = await _wait_for_status(client, job_id, JobStatus.running)
         assert running["progress"]
         assert "batch" in running["progress"]

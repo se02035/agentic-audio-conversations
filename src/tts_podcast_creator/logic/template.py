@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from tts_podcast_creator.logic.models import (
     AudioEncoding,
     DialogueTurn,
@@ -9,6 +11,8 @@ from tts_podcast_creator.logic.models import (
     PodcastScript,
     VoiceConfig,
 )
+
+logger = logging.getLogger(__name__)
 
 SAMPLE_TURNS_BY_LANG: dict[str, list[DialogueTurn]] = {
     "en": [
@@ -111,14 +115,25 @@ SAMPLE_TURNS_BY_LANG: dict[str, list[DialogueTurn]] = {
 def create_script_template(language_code: str = "en-US") -> PodcastScript:
     """Generate a starter 2-speaker script with native Chirp 3 HD voices.
 
+    Sample dialogue exists for ``en``, ``de``, and ``fr`` language prefixes.
+    Other locales keep the requested ``language_code`` and Chirp 3 HD voice
+    names but reuse the English sample turns.
+
     Args:
         language_code: BCP-47 language tag (e.g. ``en-US``, ``de-DE``).
 
     Returns:
-        Sample ``PodcastScript``.
+        Sample ``PodcastScript`` with independent turn copies.
     """
     lang_prefix = language_code.split("-")[0].lower()
-    turns = SAMPLE_TURNS_BY_LANG.get(lang_prefix, SAMPLE_TURNS_BY_LANG["en"])
+    if lang_prefix not in SAMPLE_TURNS_BY_LANG:
+        logger.warning(
+            "SAMPLE_TURNS_BY_LANG has no %r sample; falling back to English for %s",
+            lang_prefix,
+            language_code,
+        )
+    source_turns = SAMPLE_TURNS_BY_LANG.get(lang_prefix, SAMPLE_TURNS_BY_LANG["en"])
+    turns = [turn.model_copy() for turn in source_turns]
     return PodcastScript(
         metadata=PodcastMetadata(
             title=f"Sample Podcast ({language_code})",

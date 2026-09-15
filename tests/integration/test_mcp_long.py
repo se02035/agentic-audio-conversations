@@ -83,12 +83,18 @@ async def test_live_mcp_long_form_unicorn_and_german_ai(tmp_path: Path) -> None:
                 job_u = tool_data(
                     await client.call_tool("start_podcast", {"script": unicorn.to_yaml()})
                 )
+                unicorn_elapsed = time.perf_counter() - t0
+                assert unicorn_elapsed < START_DEADLINE_SEC, (
+                    f"unicorn start_podcast blocked for {unicorn_elapsed:.2f}s; "
+                    f"expected < {START_DEADLINE_SEC}s"
+                )
+                t1 = time.perf_counter()
                 job_g = tool_data(
                     await client.call_tool("start_podcast", {"script": german.to_yaml()})
                 )
-                elapsed = time.perf_counter() - t0
-                assert elapsed < START_DEADLINE_SEC, (
-                    f"long-form start_podcast blocked for {elapsed:.2f}s; "
+                german_elapsed = time.perf_counter() - t1
+                assert german_elapsed < START_DEADLINE_SEC, (
+                    f"German start_podcast blocked for {german_elapsed:.2f}s; "
                     f"expected < {START_DEADLINE_SEC}s"
                 )
                 assert job_u["job_id"] != job_g["job_id"]

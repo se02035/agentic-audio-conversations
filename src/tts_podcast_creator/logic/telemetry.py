@@ -41,20 +41,24 @@ class _CurrentStderr:
             return
 
 
-def setup_telemetry(settings: Settings | None = None) -> None:
+def setup_telemetry(settings: Settings | None = None) -> TracerProvider:
     """Configure a global ``TracerProvider`` once.
 
     Console spans go to stderr (safe for HTTP JSON-RPC). Cloud Trace uses ADC
     when ``gcp`` is listed in ``OTEL_TRACES_EXPORTER``. Missing GCP credentials
     log a warning and skip that exporter.
 
+    When a provider is already installed, a new provider is still created and
+    returned so callers (and tests) can use the requested exporters even if
+    ``_PROVIDER_SET`` is already true.
+
     Args:
         settings: Optional settings. Loaded from the environment when omitted.
+
+    Returns:
+        The ``TracerProvider`` configured for this call.
     """
     global _PROVIDER_SET
-    if _PROVIDER_SET:
-        return
-
     cfg = settings or Settings()
     resource = _build_resource(cfg)
     provider = TracerProvider(resource=resource)
@@ -74,9 +78,11 @@ def setup_telemetry(settings: Settings | None = None) -> None:
         if gcp_exporter is not None:
             provider.add_span_processor(BatchSpanProcessor(gcp_exporter))
 
-    trace.set_tracer_provider(provider)
-    _PROVIDER_SET = True
-    logger.info("OpenTelemetry tracing enabled (%s)", ", ".join(exporters) or "no exporters")
+    if not _PROVIDER_SET:
+        trace.set_tracer_provider(provider)
+        _PROVIDER_SET = True
+        logger.info("OpenTelemetry tracing enabled (%s)", ", ".join(exporters) or "no exporters")
+    return provider
 
 
 def _build_resource(settings: Settings) -> Resource:

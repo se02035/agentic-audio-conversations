@@ -98,12 +98,17 @@ class TestStorage:
             download_file(MagicMock(), "https://example.com/audio.wav", tmp_path / "x.wav")
 
     def test_eu_location_allowlist(self) -> None:
-        """EU, EUR4, and europe-* are allowed; US/ASIA/AU are not."""
+        """EU multi-region, EUR4, and listed EU regions are allowed; others are not."""
         assert is_eu_bucket_location("EU")
         assert is_eu_bucket_location("eu")
         assert is_eu_bucket_location("EUR4")
         assert is_eu_bucket_location("europe-west3")
         assert is_eu_bucket_location("EUROPE-WEST1")
+        assert is_eu_bucket_location("europe-north2")
+        assert not is_eu_bucket_location("europe-west2")
+        assert not is_eu_bucket_location("EUROPE-WEST6")
+        assert not is_eu_bucket_location("EUROPE-FAKE")
+        assert not is_eu_bucket_location("EUR5")
         assert not is_eu_bucket_location("US")
         assert not is_eu_bucket_location("NAM4")
         assert not is_eu_bucket_location("ASIA")

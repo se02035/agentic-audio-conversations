@@ -129,10 +129,17 @@ async def test_live_mcp_two_concurrent_jobs_status_and_download(tmp_path: Path) 
             async with Client(live.url) as client:
                 t0 = time.perf_counter()
                 first = tool_data(await client.call_tool("start_podcast", {"script": script_a}))
+                first_elapsed = time.perf_counter() - t0
+                assert first_elapsed < START_DEADLINE_SEC, (
+                    f"first start_podcast blocked for {first_elapsed:.2f}s; "
+                    f"expected < {START_DEADLINE_SEC}s"
+                )
+                t1 = time.perf_counter()
                 second = tool_data(await client.call_tool("start_podcast", {"script": script_b}))
-                elapsed = time.perf_counter() - t0
-                assert elapsed < START_DEADLINE_SEC, (
-                    f"two start_podcast calls took {elapsed:.2f}s; expected < {START_DEADLINE_SEC}s"
+                second_elapsed = time.perf_counter() - t1
+                assert second_elapsed < START_DEADLINE_SEC, (
+                    f"second start_podcast blocked for {second_elapsed:.2f}s; "
+                    f"expected < {START_DEADLINE_SEC}s"
                 )
                 assert first["job_id"] != second["job_id"]
                 assert first["audio_uri"] != second["audio_uri"]

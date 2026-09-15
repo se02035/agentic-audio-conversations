@@ -35,7 +35,7 @@ uv run tts-podcast-creator synthesize --script script_de.yaml --output output/ep
 uv run tts-podcast-creator download --gcs-uri gs://your-eu-bucket/podcasts/episode.wav --output output/episode.wav
 ```
 
-How to run the tools: [`docs/creating-audio.md`](../docs/creating-audio.md). Why these APIs: [`docs/gcp-design.md`](../docs/gcp-design.md).
+How to run the tools: [`docs/creating-audio.md`](../../../docs/creating-audio.md). Why these APIs: [`docs/gcp-design.md`](../../../docs/gcp-design.md).
 
 ## MCP HTTP workflow
 

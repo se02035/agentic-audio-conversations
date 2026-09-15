@@ -20,7 +20,7 @@ from opentelemetry import context as otel_context
 from opentelemetry import trace
 from pydantic import BaseModel, Field
 
-from tts_podcast_creator.logic.exceptions import JobNotFound, ScriptPayloadError, SynthesisCancelled
+from tts_podcast_creator.logic.exceptions import JobNotFound, SynthesisCancelled
 from tts_podcast_creator.logic.models import PodcastScript
 from tts_podcast_creator.logic.settings import Settings
 
@@ -40,6 +40,9 @@ class JobStatus(StrEnum):
     succeeded = "succeeded"
     failed = "failed"
     cancelled = "cancelled"
+
+
+_TERMINAL_STATUSES = frozenset({JobStatus.succeeded, JobStatus.failed, JobStatus.cancelled})
 
 
 class JobRecord(BaseModel):
@@ -124,6 +127,8 @@ class JobManager:
         self._cancel_events: dict[str, threading.Event] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._lock = threading.Lock()
+        self._handles_lock = threading.Lock()
+        self._cached_handles: CloudHandles | None = None
         self._semaphore = asyncio.Semaphore(settings.podcast_max_concurrent_jobs)
         self._executor = ThreadPoolExecutor(
             max_workers=max(settings.podcast_max_concurrent_jobs, 4),
@@ -134,9 +139,16 @@ class JobManager:
         """Validate a YAML/JSON payload against the script schema and size cap."""
         return PodcastScript.from_payload(payload, max_bytes=self.settings.podcast_max_script_bytes)
 
+    def _handles(self) -> CloudHandles:
+        """Return memoized Cloud SDK clients, creating them on first use."""
+        with self._handles_lock:
+            if self._cached_handles is None:
+                self._cached_handles = self._clients_factory()
+            return self._cached_handles
+
     def _preflight_voices(self, script: PodcastScript, translate_to: str | None) -> None:
         """Confirm Chirp 3 HD names exist in the EU catalog before enqueueing."""
-        handles = self._clients_factory()
+        handles = self._handles()
         checker = self._voice_catalog or _default_voice_catalog
         checker(script, handles)
         if not translate_to:
@@ -158,7 +170,8 @@ class JobManager:
         self._prune()
         script = self.parse_script(script_payload)
         self.settings.require_gcs_bucket()
-        self._preflight_voices(script, translate_to)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(self._executor, self._preflight_voices, script, translate_to)
         job_id = str(uuid.uuid4())
         prefix = self.settings.job_prefix_uri(job_id)
         record = JobRecord(
@@ -172,7 +185,7 @@ class JobManager:
         with self._lock:
             self._jobs[job_id] = record
             self._cancel_events[job_id] = cancel_event
-        self._persist_record(record)
+        await loop.run_in_executor(self._executor, self._persist_record, record)
         parent_ctx = otel_context.get_current()
         task = asyncio.create_task(
             self._run_job(job_id, script, translate_to, parent_ctx),
@@ -187,14 +200,25 @@ class JobManager:
         self._prune()
         with self._lock:
             current = self._jobs.get(job_id)
+        loop = asyncio.get_running_loop()
         if current is not None:
-            return self._maybe_fail_stale(current, store_in_memory=True)
+            return await loop.run_in_executor(
+                self._executor,
+                self._maybe_fail_stale,
+                current,
+                True,
+            )
         status_uri = f"{self.settings.job_prefix_uri(job_id)}/status.json"
         payload = await self._read_status_from_gcs(status_uri)
         if payload is None:
             raise JobNotFound(job_id)
         record = JobRecord.model_validate(payload)
-        return self._maybe_fail_stale(record, store_in_memory=False)
+        return await loop.run_in_executor(
+            self._executor,
+            self._maybe_fail_stale,
+            record,
+            False,
+        )
 
     async def cancel(self, job_id: str) -> JobRecord:
         """Request cooperative cancel and persist ``cancelled`` immediately.
@@ -219,7 +243,9 @@ class JobManager:
                 )
                 self._jobs[job_id] = updated
         if updated is not None:
-            self._persist_record(updated)
+            await asyncio.get_running_loop().run_in_executor(
+                self._executor, self._persist_record, updated
+            )
             return updated.model_copy()
 
         status_uri = f"{self.settings.job_prefix_uri(job_id)}/status.json"
@@ -237,10 +263,12 @@ class JobManager:
                 "updated_at": utc_now(),
             }
         )
-        self._persist_record(cancelled)
+        await asyncio.get_running_loop().run_in_executor(
+            self._executor, self._persist_record, cancelled
+        )
         return cancelled
 
-    def _maybe_fail_stale(self, record: JobRecord, *, store_in_memory: bool) -> JobRecord:
+    def _maybe_fail_stale(self, record: JobRecord, store_in_memory: bool) -> JobRecord:
         """Turn stale queued/running records into failed (no TTS resume)."""
         if record.status not in {JobStatus.queued, JobStatus.running}:
             return record.model_copy()
@@ -310,7 +338,9 @@ class JobManager:
                     if self._cancel_events[job_id].is_set():
                         self._mark(job_id, JobStatus.cancelled)
                         return
-                    self._mark(job_id, JobStatus.running, progress="starting")
+                    marked = self._mark(job_id, JobStatus.running, progress="starting")
+                    if marked.status in _TERMINAL_STATUSES:
+                        return
                     await asyncio.get_running_loop().run_in_executor(
                         self._executor,
                         self._work_sync,
@@ -402,6 +432,8 @@ class JobManager:
                     raise SynthesisCancelled()
             with self._lock:
                 current = self._jobs[job_id]
+                if current.status == JobStatus.failed:
+                    return
                 if current.status == JobStatus.cancelled or cancel_event.is_set():
                     raise SynthesisCancelled()
                 self._jobs[job_id] = current.model_copy(
@@ -434,6 +466,11 @@ class JobManager:
                 JobStatus.failed,
             }:
                 return current
+            if current.status == JobStatus.failed and status not in {
+                JobStatus.failed,
+                JobStatus.cancelled,
+            }:
+                return current
             updates: dict[str, Any] = {"status": status, "updated_at": utc_now()}
             if error is not None:
                 updates["error"] = error
@@ -459,7 +496,7 @@ class JobManager:
             stamped = record
             if stamped.updated_at is None:
                 stamped = record.model_copy(update={"updated_at": utc_now()})
-            handles = self._clients_factory()
+            handles = self._handles()
             self._upload_bytes(
                 handles.gcs_client,
                 stamped.status_uri,
@@ -468,11 +505,12 @@ class JobManager:
             )
         except Exception:
             logger.exception("Failed to persist status.json for job %s", record.job_id)
+            raise
 
     async def _read_status_from_gcs(self, status_uri: str) -> dict[str, Any] | None:
         def _load() -> dict[str, Any] | None:
             try:
-                handles = self._clients_factory()
+                handles = self._handles()
                 raw = self._download_bytes(handles.gcs_client, status_uri)
             except Exception:
                 logger.exception("Failed to read %s", status_uri)
@@ -561,7 +599,7 @@ def validate_payload(payload: str, settings: Settings) -> dict[str, Any]:
     """Return a validation summary for MCP ``validate_script``."""
     try:
         script = PodcastScript.from_payload(payload, max_bytes=settings.podcast_max_script_bytes)
-    except (ScriptPayloadError, Exception) as exc:
+    except Exception as exc:
         return {
             "valid": False,
             "title": "",

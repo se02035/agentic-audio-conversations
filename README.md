@@ -1,12 +1,12 @@
-# TTS Podcast Creator
+# Agentic Audio Conversations
 
-Turn a YAML or JSON dialogue into spoken audio with Google Cloud **Chirp 3 HD** voices, while keeping **synthesis, translation, and stored audio in the EU**.
+Generate spoken **audio conversations** from a YAML (or JSON) script using Google Cloud **Chirp 3 HD** Text-to-Speech, with **EU data residency** and **EU ML processing**. Synthesis, translation, and stored audio stay on EU regional endpoints and EU GCS buckets — not the global TTS/Translation APIs.
 
 Agents and humans share one library (`src/tts_podcast_creator/logic`). A **CLI** writes a local WAV; a **FastMCP HTTP** server starts the same work as a background job and leaves the file on an EU GCS bucket.
 
 ## The problem
 
-Cloud TTS can sound like a two-person show, but the APIs do not line up with a long, sovereign, agent-driven podcast:
+Cloud TTS can sound like a two-person conversation, but the APIs do not line up with a long, sovereign, agent-driven episode:
 
 1. **Multi-speaker and long-form are different RPCs.** `synthesizeLongAudio` handles length, not dialogue. `synthesize_speech` with `multi_speaker_markup` handles Chirp 3 HD conversation, not a 15-minute script in one call (payloads much above ~1500 characters often `502` / `504`).
 2. **Global TTS is not EU processing.** Default Text-to-Speech and Translation endpoints are not the EU regional ones. A US GCS bucket would also break residency for the audio at rest.
@@ -30,7 +30,7 @@ It treats Cloud TTS as a **batch engine**, not a one-shot renderer:
 - Official `TextToSpeechClient.synthesize_speech` + `multi_speaker_markup` on `eu-texttospeech.googleapis.com`
 - Turns packed at ≤1500 characters, GAPIC retry per batch, LINEAR16 WAV stitched locally
 - Translation on `translate-eu.googleapis.com` / `europe-west1`
-- Writes only to GCS buckets in `EU`, `EUR4`, or `europe-*`
+- Writes only to GCS buckets on the EU allowlist: `EU`, `EUR4`, `europe-central2`, `europe-north1`, `europe-north2`, `europe-southwest1`, `europe-west1`, `europe-west3`, `europe-west4`, `europe-west8`, `europe-west9`, `europe-west10`, `europe-west12`
 - MCP `start_podcast` returns before `synthesize_speech`; status is polled; audio is fetched from GCS by the caller
 
 ```mermaid

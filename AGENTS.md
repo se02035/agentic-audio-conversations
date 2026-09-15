@@ -72,7 +72,7 @@ Live tests skip unless `GOOGLE_CLOUD_PROJECT` and `PODCAST_TEST_GCS_URI` are set
 
 Full list: [`.agents/rules/gcp-eu-sovereignty.md`](.agents/rules/gcp-eu-sovereignty.md).
 
-- TTS only via `eu-texttospeech.googleapis.com`; Translation only via `translate-eu.googleapis.com` / `europe-west1`; GCS buckets in `EU` / `EUR4` / `europe-*` (enforced on writes).
+- TTS only via `eu-texttospeech.googleapis.com`; Translation only via `translate-eu.googleapis.com` / `europe-west1`; GCS buckets on the EU allowlist (`EU`, `EUR4`, and the listed `europe-*` regions in `is_eu_bucket_location`; enforced on writes).
 - Official `TextToSpeechClient.synthesize_speech` + `multi_speaker_markup`. Never `synthesizeLongAudio`.
 - Speaker aliases `[a-zA-Z0-9]+`. Voice names must contain `Chirp3-HD`. `list_voices` on synthesize/start_podcast only.
 - One-speaker scripts get an unused Companion persona.

@@ -66,10 +66,11 @@ async def test_cancel_podcast_stops_further_batches(sample_script_yaml: str) -> 
             time.sleep(0.12)
         return write_fake_wav(output_path)
 
-    mcp, _manager, gcs = mcp_app(batched_synth)
+    mcp, manager, gcs = mcp_app(batched_synth)
     async with Client(mcp) as client:
         started = tool_data(await client.call_tool("start_podcast", {"script": sample_script_yaml}))
-        assert first_batch.wait(timeout=2)
+        worker = manager._tasks[started["job_id"]]
+        assert await asyncio.to_thread(first_batch.wait, 2)
         t0 = time.perf_counter()
         cancelled = tool_data(
             await client.call_tool("cancel_podcast", {"job_id": started["job_id"]})
@@ -84,6 +85,7 @@ async def test_cancel_podcast_stops_further_batches(sample_script_yaml: str) -> 
             if status["status"] == JobStatus.cancelled:
                 break
             await asyncio.sleep(0.05)
+        await worker
     assert 5 not in batches
     assert started["audio_uri"] not in gcs.objects
 

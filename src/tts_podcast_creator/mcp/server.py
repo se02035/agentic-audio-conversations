@@ -119,6 +119,7 @@ def main() -> None:
     )
     settings = Settings()
     try:
+        host = settings.require_loopback_mcp_host()
         bucket = settings.require_gcs_bucket()
         from google.cloud import storage  # type: ignore[attr-defined]
 
@@ -133,11 +134,11 @@ def main() -> None:
     setup_telemetry(settings)
     manager = JobManager(settings)
     mcp = create_server(manager)
-    url = f"http://{settings.mcp_host}:{settings.mcp_port}{MCP_PATH}"
+    url = f"http://{host}:{settings.mcp_port}{MCP_PATH}"
     logger.info("MCP Streamable HTTP listening at %s (anonymous, single process)", url)
     mcp.run(
         transport="http",
-        host=settings.mcp_host,
+        host=host,
         port=settings.mcp_port,
         path=MCP_PATH,
     )

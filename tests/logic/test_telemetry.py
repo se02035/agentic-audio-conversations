@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-from opentelemetry import trace
-
 from tts_podcast_creator.logic.settings import Settings
 from tts_podcast_creator.logic.telemetry import setup_telemetry
 
 
 def test_console_exporter_prints_spans(capsys: object) -> None:
     """A span created after setup_telemetry(console) is printed on stderr."""
-    setup_telemetry(Settings(google_cloud_project="test-proj", otel_traces_exporter="console"))
-    tracer = trace.get_tracer("tests.telemetry")
+    provider = setup_telemetry(
+        Settings(google_cloud_project="test-proj", otel_traces_exporter="console")
+    )
+    tracer = provider.get_tracer("tests.telemetry")
     with tracer.start_as_current_span("start_podcast"):
         pass
     captured = capsys.readouterr()  # type: ignore[attr-defined]

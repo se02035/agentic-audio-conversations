@@ -71,6 +71,7 @@ class TestPodcastTranslator:
         request = mock_client.translate_text.call_args.kwargs["request"]
         assert request["source_language_code"] == "en"
         assert request["target_language_code"] == "de"
+        assert request["mime_type"] == "text/plain"
 
         # Voices remapped to German Chirp 3 HD
         assert translated.voices["host"].name == "de-DE-Chirp3-HD-Fenrir"

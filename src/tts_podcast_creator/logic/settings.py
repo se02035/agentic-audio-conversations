@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ipaddress
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -89,6 +91,16 @@ class Settings(BaseSettings):
             )
         return self.podcast_gcs_bucket
 
+    def require_loopback_mcp_host(self) -> str:
+        """Return ``mcp_host`` when it is a loopback bind, else raise."""
+        host = self.mcp_host.strip()
+        if not _is_loopback_mcp_host(host):
+            raise ValueError(
+                f"MCP_HOST '{self.mcp_host}' is not a loopback address. "
+                "Unauthenticated MCP HTTP must bind to 127.0.0.1, ::1, or localhost."
+            )
+        return host
+
     def job_prefix_uri(self, job_id: str) -> str:
         """Return ``gs://bucket/prefix/job_id`` for a job."""
         bucket = self.require_gcs_bucket()
@@ -101,3 +113,16 @@ class Settings(BaseSettings):
             for part in self.otel_traces_exporter.split(",")
             if part.strip() and part.strip().lower() not in {"none", "off"}
         ]
+
+
+def _is_loopback_mcp_host(host: str) -> bool:
+    """Return True for localhost, IPv4 loopback, or IPv6 loopback binds."""
+    text = host.strip()
+    if len(text) >= 2 and text[0] == "[" and text[-1] == "]":
+        text = text[1:-1]
+    if text.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(text).is_loopback
+    except ValueError:
+        return False

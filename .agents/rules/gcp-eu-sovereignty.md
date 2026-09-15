@@ -11,7 +11,7 @@ When writing code, scripts, CLI commands, or tests for `tts-podcast-creator`, yo
 ## 1. Strict EU Data Residency & Processing Endpoints
 - **Cloud Text-to-Speech**: MUST always use the European regional endpoint `eu-texttospeech.googleapis.com`. Never route through global or US endpoints.
 - **Cloud Translation**: MUST always use `translate-eu.googleapis.com` with location `europe-west1`.
-- **Cloud Storage**: GCS buckets used for audio MUST be in the `EU` multi-region, `EUR4`, or a European region (`europe-*`, e.g. `europe-west3`). `require_eu_bucket` / `require_eu_gcs_uri` enforce this on MCP startup and CLI `synthesize --gcs-uri`. Do not construct `storage.Client()` without project + ADC.
+- **Cloud Storage**: GCS buckets used for audio MUST be on the EU-only allowlist: `EU`, `EUR4`, `europe-central2`, `europe-north1`, `europe-north2`, `europe-southwest1`, `europe-west1`, `europe-west3`, `europe-west4`, `europe-west8`, `europe-west9`, `europe-west10`, `europe-west12`. Do not accept every `europe-*` prefix (`europe-west2` London and `europe-west6` Zürich are out). `require_eu_bucket` / `require_eu_gcs_uri` enforce this on MCP startup and CLI `synthesize --gcs-uri`. Do not construct `storage.Client()` without project + ADC.
 
 ## 2. Unified Synthesis (official SDK)
 - Use `google.cloud.texttospeech.TextToSpeechClient.synthesize_speech` with `multi_speaker_markup`. Do not call `synthesizeLongAudio` (it cannot do multi-speaker).

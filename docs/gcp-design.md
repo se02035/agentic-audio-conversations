@@ -10,7 +10,7 @@ The product claim is that **speech and translation processing stay in the EU**. 
 | --- | --- | --- |
 | Chirp 3 HD synthesis | `eu-texttospeech.googleapis.com` | Global or US TTS endpoints |
 | Dialogue translation | `translate-eu.googleapis.com`, location `europe-west1` | Global Translation, `us-central1` |
-| Audio at rest | GCS bucket in `EU`, `EUR4`, or `europe-*` | US / ASIA / NAM dual-regions |
+| Audio at rest | GCS bucket on the EU allowlist (`EU`, `EUR4`, `europe-central2`, `europe-north1`, `europe-north2`, `europe-southwest1`, `europe-west1`, `europe-west3`, `europe-west4`, `europe-west8`, `europe-west9`, `europe-west10`, `europe-west12`) | US / ASIA / NAM dual-regions, `europe-west2` (London), `europe-west6` (Zürich), other `EUROPE-*` prefixes |
 
 Writes are enforced in code (`require_eu_bucket` / `require_eu_gcs_uri`) on MCP startup and CLI `synthesize --gcs-uri`. `download` only warns: reading an old non-EU object must not block recovery. Clients are always constructed with explicit project + ADC — never a bare `storage.Client()`.
 

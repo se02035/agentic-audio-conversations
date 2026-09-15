@@ -8,7 +8,29 @@ from google.cloud import storage  # type: ignore[attr-defined]
 
 from tts_podcast_creator.logic.exceptions import GcsResidencyError
 
-_EU_EXACT = frozenset({"EU", "EUR4"})
+# GCS ``bucket.location`` values that keep object data in the EU (not UK/CH).
+EU_BUCKET_LOCATIONS = frozenset(
+    {
+        "EU",
+        "EUR4",
+        "EUROPE-CENTRAL2",
+        "EUROPE-NORTH1",
+        "EUROPE-NORTH2",
+        "EUROPE-SOUTHWEST1",
+        "EUROPE-WEST1",
+        "EUROPE-WEST3",
+        "EUROPE-WEST4",
+        "EUROPE-WEST8",
+        "EUROPE-WEST9",
+        "EUROPE-WEST10",
+        "EUROPE-WEST12",
+    }
+)
+
+
+def format_eu_bucket_locations() -> str:
+    """Return a short, stable allowlist string for errors and docs."""
+    return ", ".join(sorted(EU_BUCKET_LOCATIONS))
 
 
 def upload_file(
@@ -95,13 +117,11 @@ def delete_file(gcs_client: storage.Client, gcs_uri: str) -> None:
 
 
 def is_eu_bucket_location(location: str | None) -> bool:
-    """Return True for EU multi-region, EUR4, or europe-* regional buckets."""
+    """Return True when ``location`` is on the EU-only GCS allowlist."""
     if not location or not isinstance(location, str):
         return False
     normalized = location.strip().upper().replace("_", "-")
-    if normalized in _EU_EXACT:
-        return True
-    return normalized.startswith("EUROPE-")
+    return normalized in EU_BUCKET_LOCATIONS
 
 
 def bucket_name_from_uri(gcs_uri: str) -> str:
@@ -146,13 +166,13 @@ def require_eu_bucket(gcs_client: storage.Client, bucket_name: str) -> str:
         The bucket location string.
 
     Raises:
-        GcsResidencyError: When the bucket is not EU/EUR4/europe-*.
+        GcsResidencyError: When the bucket is not on the EU-only allowlist.
     """
     location = read_bucket_location(gcs_client, bucket_name)
     if not is_eu_bucket_location(location):
         raise GcsResidencyError(
             f"GCS bucket '{bucket_name}' is in '{location}', which is not EU. "
-            "Use an EU multi-region, EUR4, or europe-* bucket."
+            f"Use one of: {format_eu_bucket_locations()}."
         )
     return location
 

@@ -170,6 +170,13 @@ turns:
   text: Was rätst du Software-Ingenieuren ganz konkret für ihren Arbeitsalltag? Welche
     Fähigkeiten sollte man heute trainieren, um für die nächsten fünf bis zehn Jahre
     optimal aufgestellt zu sein?
+- speaker: experte
+  text: 'Erstens: Vertiefe dein Wissen über Systemarchitektur, Datenstrukturen und
+    Netzwerkprotokolle. Zweitens: Meistere automatisierte Tests und Continuous Integration.
+    Drittens: Lerne, KI-Werkzeuge virtuos zu bedienen – verstehe ihre Stärken, aber
+    vor allem ihre blinden Flecken. Und viertens: Trainiere deine Kommunikationsfähigkeit,
+    denn je mehr technische Arbeit automatisiert wird, desto entscheidender wird die
+    präzise menschliche Abstimmung und das Verstehen der Kundenbedürfnisse.'
 - speaker: moderatorin
   text: 'Ein Thema, das mich persönlich brennend interessiert: Verändert KI eigentlich
     auch die Wahl unserer Softwarearchitektur? Früher gab es heftige Debatten zwischen
@@ -237,17 +244,6 @@ turns:
     studiert, lernt nicht nur programmieren – er gestaltet die fundamentale Infrastruktur
     unserer digitalen Zivilisation.'
 - speaker: moderatorin
-  text: 'Ein unglaublich starkes Plädoyer! Wenn wir abschließend fünf Jahre in die
-    Zukunft blicken: Was ist deine kühnste Prognose für das Jahr 2031 im Software
-    Engineering?'
-- speaker: experte
-  text: Im Jahr 2031 werden über neunzig Prozent des Produktionscodes von autonomen
-    Agenten geschrieben, getestet und gewartet werden. Software-Ingenieure werden
-    zu System-Ökonomen und Produkt-Architekten, die komplexe Agentenschwärme orchestrieren.
-    Und Software wird so individuell und anpassbar sein, dass Anwendungen in Echtzeit
-    für einzelne Benutzerbedürfnisse synthetisiert werden. Es ist die aufregendste
-    Zeit überhaupt, um in der Technologiebranche zu arbeiten!
-- speaker: moderatorin
   text: Das berührt auch die Frage der IT-Sicherheit und des Cyber-Defense-Bereichs.
     Wenn Angreifer automatisierte KI-Tools nutzen, um Zero-Day-Lücken in Sekunden
     aufzuspüren, müssen unsere Abwehrsysteme doch genauso autonom reagieren können.
@@ -260,13 +256,17 @@ turns:
     generieren. DevSecOps wird vollautomatisiert – Sicherheit wird nicht mehr am Ende
     des Release-Prozesses geprüft, sondern ist als permanenter autonomer Wächter in
     die gesamte Software-Pipeline integriert.
+- speaker: moderatorin
+  text: 'Ein unglaublich starkes Plädoyer! Wenn wir abschließend fünf Jahre in die
+    Zukunft blicken: Was ist deine kühnste Prognose für das Jahr 2031 im Software
+    Engineering?'
 - speaker: experte
-  text: 'Erstens: Vertiefe dein Wissen über Systemarchitektur, Datenstrukturen und
-    Netzwerkprotokolle. Zweitens: Meistere automatisierte Tests und Continuous Integration.
-    Drittens: Lerne, KI-Werkzeuge virtuos zu bedienen – verstehe ihre Stärken, aber
-    vor allem ihre blinden Flecken. Und viertens: Trainiere deine Kommunikationsfähigkeit,
-    denn je mehr technische Arbeit automatisiert wird, desto entscheidender wird die
-    präzise menschliche Abstimmung und das Verstehen der Kundenbedürfnisse.'
+  text: Im Jahr 2031 werden über neunzig Prozent des Produktionscodes von autonomen
+    Agenten geschrieben, getestet und gewartet werden. Software-Ingenieure werden
+    zu System-Ökonomen und Produkt-Architekten, die komplexe Agentenschwärme orchestrieren.
+    Und Software wird so individuell und anpassbar sein, dass Anwendungen in Echtzeit
+    für einzelne Benutzerbedürfnisse synthetisiert werden. Es ist die aufregendste
+    Zeit überhaupt, um in der Technologiebranche zu arbeiten!
 - speaker: moderatorin
   text: Ein wunderbares, motivierendes Schlusswort für unsere heutige Folge! Philipp,
     ganz herzlichen Dank für diese tiefen, differenzierten und inspirierenden Einblicke.

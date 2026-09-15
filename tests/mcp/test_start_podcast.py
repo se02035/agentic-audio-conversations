@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import threading
 import time
@@ -41,7 +42,7 @@ async def test_start_podcast_returns_immediately_with_gcs_uris(sample_script_yam
         assert persisted["status"] in {JobStatus.queued, JobStatus.running}
         assert persisted["job_id"] == result["job_id"]
         assert persisted.get("updated_at")
-        assert started.wait(timeout=2)
+        assert await asyncio.to_thread(started.wait, 2)
         release.set()
     assert manager._jobs[result["job_id"]].status in {
         JobStatus.queued,

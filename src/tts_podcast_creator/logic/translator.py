@@ -144,6 +144,7 @@ class PodcastTranslator:
                 request={
                     "parent": self.parent_location,
                     "contents": batch,
+                    "mime_type": "text/plain",
                     "source_language_code": source_iso,
                     "target_language_code": target_iso,
                 },
