@@ -1,0 +1,68 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Podcast Creator: CLI --help",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tts_podcast_creator.cli",
+      "args": ["--help"],
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Podcast Creator: Generate Template (YAML)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tts_podcast_creator.cli",
+      "args": ["template", "--language", "en-US", "--output", "scratch/template_en.yaml"],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Podcast Creator: Validate Script",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tts_podcast_creator.cli",
+      "args": ["validate", "--script", "scratch/template_en.yaml"],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Podcast Creator: Synthesize local WAV",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tts_podcast_creator.cli",
+      "args": [
+        "synthesize",
+        "--script",
+        "scratch/template_en.yaml",
+        "--output",
+        "scratch/template_en.wav"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Python: Debug Current Test File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "purpose": ["debug-test"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Podcast Creator: MCP HTTP",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tts_podcast_creator.mcp",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
+}
