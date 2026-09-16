@@ -1,6 +1,6 @@
 # Creating audio
 
-How to set up GCP, write a script, and produce a WAV via the CLI or the MCP server.
+How to set up GCP, write a script, and produce a WAV via the CLI, the MCP server, or the ADK Web agent.
 
 Agent-oriented workflow: [`.agents/skills/audio-conversation/SKILL.md`](../.agents/skills/audio-conversation/SKILL.md). Library facade: [`library-api.md`](library-api.md). Why the APIs look this way: [`gcp-design.md`](gcp-design.md). Batching and stitching: [`synthesis.md`](synthesis.md).
 
@@ -76,7 +76,7 @@ uv run tts-audio-conversation download --gcs-uri gs://…/jobs/{id}/output/audio
 
 ## MCP HTTP server
 
-Streamable HTTP only (no stdio), single process, no MCP authentication. `MCP_HOST` must be a loopback address (`127.0.0.1`, `::1`, or `localhost`). `start_conversation` returns immediately with a `job_id` and `gs://` URIs after writing `status.json` as `queued` and checking EU `list_voices`. Poll `get_conversation_status`. There is **no download tool** — fetch the WAV from GCS with your own credentials.
+Streamable HTTP only (no stdio), single process, no MCP authentication. `MCP_HOST` must be a loopback address (`127.0.0.1`, `::1`, or `localhost`). `start_conversation` returns immediately with a `job_id` and `gs://` URIs after writing `status.json` as `queued` and checking EU `list_voices`. Poll `get_conversation_status`. There is **no download tool** — fetch the WAV from GCS with your own credentials. The server advertises MCP `instructions` (workflow) and tool annotations (`readOnlyHint` on `validate_script` / `get_conversation_status` so clients can skip confirmation on those reads).
 
 Required env: `GOOGLE_CLOUD_PROJECT`, `AUDIO_CONVERSATION_GCS_STAGING_BUCKET`.
 
@@ -95,6 +95,24 @@ uv run tts-audio-conversation-mcp
 | `cancel_conversation` | Cooperative cancel between TTS batches |
 
 Jobs run concurrently (`AUDIO_CONVERSATION_MAX_CONCURRENT_JOBS`, default 4). Extra jobs stay `queued`. One Uvicorn worker — do not scale the process horizontally.
+
+## ADK Web agent
+
+Optional adapter: a Google ADK `LlmAgent` that talks to MCP HTTP (not TTS directly). Install the extra, enable Vertex/Gemini Enterprise (`aiplatform.googleapis.com`), and keep Gemini on the **global** location. Speech/translation stay on EU endpoints in the MCP process.
+
+```bash
+uv sync --extra adk --extra dev
+# .env: GOOGLE_GENAI_USE_ENTERPRISE=true, GOOGLE_CLOUD_LOCATION=global,
+# ADK_AGENT_MODEL=gemini-3.8-flash, AUDIO_CONVERSATION_MCP_URL=http://127.0.0.1:8000/mcp
+uv run tts-audio-conversation-mcp
+uv run adk web --host 127.0.0.1 --port 8080 --no-reload src/tts_audio_conversation/adk
+```
+
+VS Code: compound **Audio Overview: MCP + ADK Web** (MCP on 8000, ADK Web on 8080). Upload the short [`src/tts_audio_conversation/adk/example_script.yaml`](../src/tts_audio_conversation/adk/example_script.yaml) (not the long [`templates/`](../templates/) scripts).
+
+`create_audio_conversation` is a `LongRunningFunctionTool`: it only calls MCP `start_conversation` and returns `{job_id, status: queued}`. The playground HTTP request does **not** wait on TTS. An App plugin polls `get_conversation_status` off-request, then resumes with a `FunctionResponse` whose id matches the original function call. On success it downloads the WAV and saves unique artifacts `script_{script_id}.yaml` and `audio_{job_id}_{language}.wav`. ADK Web's Artifacts tab lists files from session `artifactDelta` events (the same path as YAML uploads), not from `save_artifact` alone.
+
+Automated ADK tests that need the runtime spawn the real [`adk api_server`](https://adk.dev/runtime/api-server/) CLI (not `adk web`, not an in-process fake) against `src/tts_audio_conversation/adk` and drive `/list-apps`, session CRUD, `POST /run`, and artifacts over HTTP. Those tests live under `tests/integration/adk/` even when MCP TTS/GCS are mocked. Unit tests under `tests/unit/adk/` cover ingest/create tools, the LRO plugin, and the MCP client without starting the API server. Gemini is the configured live model on the Gemini LRO integration test.
 
 ## Live and slow tests
 

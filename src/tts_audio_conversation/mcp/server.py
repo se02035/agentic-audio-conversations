@@ -5,11 +5,13 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
+from mcp.types import ToolAnnotations
 from opentelemetry import trace
 from pydantic import Field
 
@@ -37,6 +39,26 @@ tracer = trace.get_tracer(__name__)
 MCP_PATH = "/mcp"
 
 
+def instruction_text() -> str:
+    """Load MCP client instructions from ``instruction.md``."""
+    return Path(__file__).with_name("instruction.md").read_text(encoding="utf-8")
+
+
+def _annotations(
+    *,
+    read_only: bool,
+    destructive: bool,
+    idempotent: bool,
+) -> ToolAnnotations:
+    """Build MCP tool hints (Gemini Enterprise uses readOnlyHint for consent)."""
+    return ToolAnnotations(
+        read_only_hint=read_only,
+        destructive_hint=destructive,
+        idempotent_hint=idempotent,
+        open_world_hint=True,
+    )
+
+
 def create_server(
     service: AudioConversationService,
     *,
@@ -51,9 +73,15 @@ def create_server(
     Returns:
         Configured FastMCP instance (no auth).
     """
-    mcp = FastMCP(name, tasks=False)
+    mcp = FastMCP(name, instructions=instruction_text(), tasks=False)
 
-    @mcp.tool(description="Upload an inline YAML/JSON script to staging GCS; return script_uri.")
+    @mcp.tool(
+        description=(
+            "Store an inline YAML/JSON conversation script in staging GCS. "
+            "Call this first, then validate_script with the returned script_uri."
+        ),
+        annotations=_annotations(read_only=False, destructive=False, idempotent=False),
+    )
     def upload_script(
         script: str = Field(description="YAML or JSON conversation script payload."),
     ) -> ScriptUploadResult:
@@ -65,7 +93,13 @@ def create_server(
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
 
-    @mcp.tool(description="Validate a script at a gs:// URI. Does not call list_voices.")
+    @mcp.tool(
+        description=(
+            "Check that a gs:// script is valid before synthesis. "
+            "If valid is false, explain error and stop; do not call start_conversation."
+        ),
+        annotations=_annotations(read_only=True, destructive=False, idempotent=True),
+    )
     def validate_script(
         script_uri: str = Field(description="gs:// URI from upload_script."),
     ) -> ScriptValidationResult:
@@ -74,9 +108,10 @@ def create_server(
 
     @mcp.tool(
         description=(
-            "Translate a gs:// script via translate-eu; write sibling script.{lang}.yaml; "
-            "return output_uri (not body)."
-        )
+            "Translate a gs:// script to another language only when the user asked. "
+            "Pass the returned output_uri to start_conversation."
+        ),
+        annotations=_annotations(read_only=False, destructive=False, idempotent=True),
     )
     def translate_script(
         script_uri: str = Field(description="gs:// URI from upload_script."),
@@ -92,9 +127,10 @@ def create_server(
 
     @mcp.tool(
         description=(
-            "Start synthesis from a gs:// script_uri. Preflight EU list_voices, write queued "
-            "status.json, return immediately. Poll get_conversation_status."
-        )
+            "Start billed TTS from a gs:// script_uri. Returns immediately with job_id "
+            "and status queued. Poll get_conversation_status; the WAV is not ready yet."
+        ),
+        annotations=_annotations(read_only=False, destructive=True, idempotent=False),
     )
     async def start_conversation(
         script_uri: str = Field(description="gs:// URI of the script to synthesize."),
@@ -110,7 +146,13 @@ def create_server(
             except ValueError as exc:
                 raise ToolError(str(exc)) from exc
 
-    @mcp.tool(description="Poll a conversation job. Uses in-memory state, else GCS status.json.")
+    @mcp.tool(
+        description=(
+            "Poll a job started by start_conversation. Repeat with a delay until "
+            "succeeded, failed, or cancelled. On success, report audio_uri."
+        ),
+        annotations=_annotations(read_only=True, destructive=False, idempotent=True),
+    )
     async def get_conversation_status(
         job_id: str = Field(description="Job id returned by start_conversation."),
     ) -> JobRecord:
@@ -122,9 +164,10 @@ def create_server(
 
     @mcp.tool(
         description=(
-            "Cancel a queued or running job. Returns immediately. The current Cloud TTS "
-            "batch may finish; later batches are skipped and audio is not uploaded."
-        )
+            "Stop a queued or running job when the user asks to cancel. "
+            "The current TTS batch may finish; later batches are skipped."
+        ),
+        annotations=_annotations(read_only=False, destructive=True, idempotent=True),
     )
     async def cancel_conversation(
         job_id: str = Field(description="Job id returned by start_conversation."),

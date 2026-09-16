@@ -40,6 +40,9 @@ dev = [
     "types-pyyaml>=6.0.12.12",
     "pre-commit>=3.6.0",
 ]
+adk = [
+    "google-adk>=2.0.0",
+]
 
 [project.scripts]
 tts-audio-conversation = "tts_audio_conversation.cli:main"
@@ -48,6 +51,11 @@ tts-audio-conversation-mcp = "tts_audio_conversation.mcp:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/tts_audio_conversation"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/tts_audio_conversation/adk/instruction.md" = "tts_audio_conversation/adk/instruction.md"
+"src/tts_audio_conversation/adk/example_script.yaml" = "tts_audio_conversation/adk/example_script.yaml"
+"src/tts_audio_conversation/mcp/instruction.md" = "tts_audio_conversation/mcp/instruction.md"
 
 [tool.ruff]
 target-version = "py311"
