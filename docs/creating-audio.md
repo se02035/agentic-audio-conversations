@@ -2,7 +2,7 @@
 
 How to set up GCP, write a script, and produce a WAV via the CLI or the MCP server.
 
-Agent-oriented workflow: [`.agents/skills/podcast-creator/SKILL.md`](../.agents/skills/podcast-creator/SKILL.md). Why the APIs look this way: [`gcp-design.md`](gcp-design.md). Batching and stitching: [`synthesis.md`](synthesis.md).
+Agent-oriented workflow: [`.agents/skills/audio-conversation/SKILL.md`](../.agents/skills/audio-conversation/SKILL.md). Library facade: [`library-api.md`](library-api.md). Why the APIs look this way: [`gcp-design.md`](gcp-design.md). Batching and stitching: [`synthesis.md`](synthesis.md).
 
 ## Setup
 
@@ -14,9 +14,9 @@ cp .env.example .env
 uv sync --all-extras
 ```
 
-Set `GOOGLE_CLOUD_PROJECT` in `.env`. MCP also needs `PODCAST_GCS_BUCKET` on the EU allowlist (`EU`, `EUR4`, `europe-central2`, `europe-north1`, `europe-north2`, `europe-southwest1`, `europe-west1`, `europe-west3`, `europe-west4`, `europe-west8`, `europe-west9`, `europe-west10`, `europe-west12`). Optional live-test URI: `PODCAST_TEST_GCS_URI`. Full knobs: [`.env.example`](../.env.example).
+Set `GOOGLE_CLOUD_PROJECT` in `.env`. Staging needs `AUDIO_CONVERSATION_GCS_STAGING_BUCKET` (choose an EU bucket in GCP; the library does not enforce residency on writes). Optional live-test URI: `AUDIO_CONVERSATION_TEST_GCS_URI`. Full knobs: [`.env.example`](../.env.example).
 
-MCP startup and `synthesize --gcs-uri` reject non-EU buckets. `download` warns and still fetches. The MCP server is anonymous; it uses **ADC in the server process** for TTS, Translation, and GCS.
+The MCP server is anonymous; it uses **ADC in the server process** for TTS, Translation, and GCS.
 
 ## Script schema
 
@@ -43,76 +43,82 @@ turns:
     text: Glad to be here.
 ```
 
-`validate` / `validate_script` check schema and size (`PODCAST_MAX_SCRIPT_BYTES`, default 512 KiB) without calling `list_voices`. CLI `synthesize` and MCP `start_podcast` also confirm names against the EU Chirp 3 HD catalog.
+`validate` / `validate_script` check schema and size (`AUDIO_CONVERSATION_MAX_SCRIPT_BYTES`, default 512 KiB) without calling `list_voices`. `create_audio` / `start_conversation` also confirm names against the EU Chirp 3 HD catalog.
 
 Sample long-form scripts live in [`templates/`](../templates/).
+
+## Shared flow (CLI and MCP)
+
+```text
+upload_script → [validate_script] → [translate_script] → create_audio / start_conversation
+```
+
+Local or inline input is only accepted by `upload_script`. Everything else takes a `gs://` script URI.
 
 ## CLI
 
 ```bash
-uv run tts-podcast-creator template --language en-US --output script.yaml
-uv run tts-podcast-creator validate --script script.yaml
-uv run tts-podcast-creator voices --language de-DE
-uv run tts-podcast-creator translate --script script.yaml --to de-DE --output script_de.yaml
+uv run tts-audio-conversation template --language en-US --output script.yaml
+uv run tts-audio-conversation upload --script script.yaml
+# prints script_uri / script_id
 
-uv run tts-podcast-creator synthesize \
-  --script script_de.yaml \
-  --output output/episode.wav \
-  --gcs-uri gs://your-eu-bucket/podcasts/episode.wav   # optional
+uv run tts-audio-conversation validate --script-uri gs://…/scripts/{id}/script.yaml
+uv run tts-audio-conversation voices --language de-DE
+uv run tts-audio-conversation translate --script-uri gs://…/script.yaml --to de-DE
+# prints output_uri
 
-uv run tts-podcast-creator download \
-  --gcs-uri gs://your-eu-bucket/podcasts/episode.wav \
-  --output output/episode.wav
+uv run tts-audio-conversation synthesize --script-uri gs://…/script.de-DE.yaml --output output/episode.wav
+uv run tts-audio-conversation status --job-id <uuid>
+uv run tts-audio-conversation download --gcs-uri gs://…/jobs/{id}/output/audio.wav --output output/episode.wav
 ```
 
-`--project` overrides `GOOGLE_CLOUD_PROJECT` / ADC. Alias: `podcast-creator`. `--verbose` enables DEBUG logs and OpenTelemetry console spans on stderr. Module form: `python -m tts_podcast_creator.cli`.
+`synthesize` starts a background job, polls until terminal, and optionally downloads the WAV. `--project` overrides `GOOGLE_CLOUD_PROJECT` / ADC. Alias: `audio-conversation`. `--verbose` enables DEBUG logs and OpenTelemetry console spans on stderr.
 
 ## MCP HTTP server
 
-Streamable HTTP only (no stdio), single process, no MCP authentication. `MCP_HOST` must be a loopback address (`127.0.0.1`, `::1`, or `localhost`). Long synthesis is an **app-level job**: `start_podcast` returns immediately with a `job_id` and `gs://` URIs after writing `status.json` as `queued` and checking EU `list_voices`. Poll `get_podcast_status`. There is **no download tool** — fetch the WAV from GCS with your own credentials.
+Streamable HTTP only (no stdio), single process, no MCP authentication. `MCP_HOST` must be a loopback address (`127.0.0.1`, `::1`, or `localhost`). `start_conversation` returns immediately with a `job_id` and `gs://` URIs after writing `status.json` as `queued` and checking EU `list_voices`. Poll `get_conversation_status`. There is **no download tool** — fetch the WAV from GCS with your own credentials.
 
-Required env: `GOOGLE_CLOUD_PROJECT`, `PODCAST_GCS_BUCKET`.
+Required env: `GOOGLE_CLOUD_PROJECT`, `AUDIO_CONVERSATION_GCS_STAGING_BUCKET`.
 
 ```bash
-# Terminal 1
-uv run tts-podcast-mcp
-# or: uv run python -m tts_podcast_creator.mcp
-# http://127.0.0.1:8000/mcp (MCP_HOST / MCP_PORT)
-
-# Terminal 2 — Inspector (Node 22.19+)
-npx @modelcontextprotocol/inspector --server-url http://127.0.0.1:8000/mcp --transport http
-```
-
-VS Code: launch **Podcast Creator: MCP HTTP** (`.vscode/launch.json`, loads `.env`).
-
-Cursor / VS Code MCP config:
-
-```json
-{
-  "mcpServers": {
-    "tts-podcast-creator": {
-      "url": "http://127.0.0.1:8000/mcp"
-    }
-  }
-}
+uv run tts-audio-conversation-mcp
+# http://127.0.0.1:8000/mcp
 ```
 
 | Tool | Behavior |
 | --- | --- |
-| `validate_script` | Schema + size cap. No GCS, no `list_voices`. |
-| `start_podcast` | Catalog check, persist `queued`, return. Optional `translate_to` runs in the worker. Send YAML/JSON in the argument, not a `gs://` link. |
-| `get_podcast_status` | Memory, else GCS `status.json`. Stale `queued`/`running` (no heartbeat for 30 min) is `failed`. |
-| `cancel_podcast` | Cooperative cancel between TTS batches. After restart, writes `cancelled` in GCS without starting a worker. In-flight RPC (~25–30s) may finish; WAV is not kept. |
+| `upload_script` | Inline YAML/JSON → `…/scripts/{id}/script.yaml`; returns `script_uri` |
+| `validate_script` | Soft-validate a `gs://` URI (no `list_voices`) |
+| `translate_script` | Translate via translate-eu; write sibling; return `output_uri` |
+| `start_conversation` | `script_uri` only; catalog check, persist `queued`, return |
+| `get_conversation_status` | Memory, else GCS `status.json` (no stale auto-fail) |
+| `cancel_conversation` | Cooperative cancel between TTS batches |
 
-Jobs run concurrently (`PODCAST_MAX_CONCURRENT_JOBS`, default 4). Extra jobs stay `queued`. One Uvicorn worker — do not scale the process horizontally.
+Jobs run concurrently (`AUDIO_CONVERSATION_MAX_CONCURRENT_JOBS`, default 4). Extra jobs stay `queued`. One Uvicorn worker — do not scale the process horizontally.
 
-Protocol era in Inspector can stay **legacy** (this server does not use FastMCP native tasks).
+## Live and slow tests
+
+Short live suites (ADC + EU bucket in `.env`):
+
+```bash
+uv run pytest -m "integration and not slow"
+uv run pytest -m "e2e and not slow"
+```
+
+Long-form `slow` tests (unicorn fairytale + German AI software engineering, each via library and MCP) synthesize full [`templates/`](../templates/) scripts. There are four tests; each alone can take ~8–15 minutes of billed TTS.
+
+**Always parallelize** with pytest-xdist so wall-clock stays near one job instead of four sequential:
+
+```bash
+uv run pytest -m slow -n 4
+```
+
+Use `-n 4` (one worker per test), not bare `pytest -m slow`. Drop to `-n 2` if EU TTS quota throttles. Tests isolate GCS prefixes and MCP ports, so xdist is safe. Agent-oriented marker table: [`AGENTS.md`](../AGENTS.md).
 
 ## Troubleshooting
 
 - `502` / `504`: batch over ~1500–3500 characters. Cap is 1500; oversized turns are split. See [`synthesis.md`](synthesis.md).
 - `429`: GAPIC retry on the batch RPC.
 - `Multi-speaker synthesis requires well structured speaker aliases`: aliases must be `[a-zA-Z0-9]+`.
-- Voice not in catalog: `synthesize` / `start_podcast` fail before TTS. List voices: `uv run tts-podcast-creator voices --language de-DE`.
-- Non-EU bucket: MCP will not listen; `synthesize --gcs-uri` refuses. `download` warns and continues.
-- Stale `queued`/`running` after a crash: treated as failed after 30 min. No TTS resume — start a new job.
+- Voice not in catalog: `create_audio` / `start_conversation` fail before TTS. List voices: `uv run tts-audio-conversation voices --language de-DE`.
+- After a process crash, orphaned `queued`/`running` status.json remains as-is; cancel writes `cancelled` without starting a worker. No TTS resume — start a new job.

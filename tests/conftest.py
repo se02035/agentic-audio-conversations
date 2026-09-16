@@ -1,4 +1,4 @@
-"""Shared fixtures, mocks, and pytest traits for the tts-podcast-creator test suite."""
+"""Shared fixtures, mocks, and pytest traits for the tts-audio-conversation test suite."""
 
 from __future__ import annotations
 
@@ -18,10 +18,14 @@ _SLOW_NODE_FRAGMENTS = (
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Ensure every collected test has layer traits (unit or integration), plus slow when needed."""
+    """Apply layer markers from path (unit / integration / e2e), plus slow when needed."""
     for item in items:
         marks = {marker.name for marker in item.iter_markers()}
-        if "integration" in Path(item.path).parts:
+        parts = set(Path(item.path).parts)
+        if "e2e" in parts:
+            if "e2e" not in marks:
+                item.add_marker(pytest.mark.e2e)
+        elif "integration" in parts:
             if "integration" not in marks:
                 item.add_marker(pytest.mark.integration)
         elif "unit" not in marks:
@@ -42,7 +46,7 @@ def mock_credentials() -> MagicMock:
 
 @pytest.fixture
 def sample_script_dict() -> dict[str, Any]:
-    """Fixture providing a valid 2-speaker podcast script dictionary."""
+    """Fixture providing a valid 2-speaker conversation script dictionary."""
     return {
         "metadata": {
             "title": "Tech Pulse Europe",
@@ -82,7 +86,7 @@ def sample_script_dict() -> dict[str, Any]:
 
 @pytest.fixture
 def sample_script_yaml(sample_script_dict: dict[str, Any]) -> str:
-    """Fixture providing a valid podcast script in YAML format."""
+    """Fixture providing a valid conversation script in YAML format."""
     import yaml
 
     return yaml.dump(sample_script_dict, sort_keys=False)
@@ -90,7 +94,7 @@ def sample_script_yaml(sample_script_dict: dict[str, Any]) -> str:
 
 @pytest.fixture
 def sample_script_json(sample_script_dict: dict[str, Any]) -> str:
-    """Fixture providing a valid podcast script in JSON format."""
+    """Fixture providing a valid conversation script in JSON format."""
     import json
 
     return json.dumps(sample_script_dict, indent=2)
@@ -98,7 +102,7 @@ def sample_script_json(sample_script_dict: dict[str, Any]) -> str:
 
 @pytest.fixture
 def sample_german_script_dict() -> dict[str, Any]:
-    """Fixture providing a valid German podcast script dictionary."""
+    """Fixture providing a valid German conversation script dictionary."""
     return {
         "metadata": {
             "title": "Tech Puls Europa",

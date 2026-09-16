@@ -10,7 +10,7 @@ This package therefore **batches** turns, retries each RPC independently, and **
 
 ```mermaid
 flowchart TD
-  script[PodcastScript]
+  script[ConversationScript]
   split[splitLongText]
   pack[batchTurns]
   rpc[synthesize_speech EU]
@@ -23,8 +23,11 @@ flowchart TD
 
 ## Batching
 
-- Pack consecutive turns until the next turn would exceed `MAX_BATCH_CHARS` (1500).
-- A turn longer than 1500 is split on word boundaries first; `pause_after_ms` stays on the last fragment.
+- Pack consecutive turns until the next turn would exceed `MAX_BATCH_CHARS` (1500)
+  or Gemini's MultiSpeakerMarkup UTF-8 byte cap (4000 bytes, including speaker/text
+  framing overhead).
+- A turn longer than either limit is split on word boundaries first; `pause_after_ms`
+  stays on the last fragment.
 - A non-null `pause_after_ms` **flushes** the current batch so silence can be inserted between Cloud responses (not inside one markup).
 
 Between batches, silence is inserted: the last turn’s `pause_after_ms`, or 300 ms by default.
@@ -35,7 +38,7 @@ Speaker aliases must be `[a-zA-Z0-9]+` (Cloud TTS constraint). Names must contai
 
 `MultiSpeakerVoiceConfig` requires **at least two** speaker definitions. A one-speaker script gets an unused **Companion** persona (`Aoede` or `Fenrir`, whichever is not the primary). Companion is never given a turn.
 
-CLI `synthesize` and MCP `start_podcast` call EU `list_voices` and fail if a name (including Companion) is missing. `validate` / `validate_script` only check the `Chirp3-HD` substring.
+CLI `synthesize` and MCP `start_conversation` call EU `list_voices` and fail if a name (including Companion) is missing. `validate` / `validate_script` only check the `Chirp3-HD` substring.
 
 ## Retries and cancel
 
