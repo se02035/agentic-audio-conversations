@@ -115,6 +115,11 @@ class TestPodcastTTSClient:
         with pytest.raises(ValueError, match="max_chars"):
             split_long_text("hello", max_chars=0)
 
+    def test_split_long_text_rejects_utf8_budget_too_small_for_character(self) -> None:
+        """A UTF-8 budget smaller than the next codepoint must raise, not oversize."""
+        with pytest.raises(ValueError, match="UTF-8 byte budget"):
+            split_long_text("😀", max_chars=10, max_utf8_bytes=3)
+
     def test_batch_turns_respects_utf8_byte_cap(self) -> None:
         """Multi-byte text is split so MultiSpeakerMarkup stays under 4000 UTF-8 bytes."""
         from tts_audio_conversation.logic.batching import markup_utf8_bytes

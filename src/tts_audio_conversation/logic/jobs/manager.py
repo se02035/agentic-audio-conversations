@@ -124,7 +124,7 @@ class JobManager:
         self.settings.require_gcs_bucket()
         loop = asyncio.get_running_loop()
         script = await loop.run_in_executor(self._control_executor, self._load_script, script_uri)
-        await loop.run_in_executor(self._executor, self._preflight_voices, script)
+        await loop.run_in_executor(self._control_executor, self._preflight_voices, script)
         job_id = str(uuid.uuid4())
         prefix = self.settings.job_prefix_uri(job_id)
         record = JobRecord(
@@ -309,7 +309,13 @@ class JobManager:
                 except Exception:
                     logger.exception("Failed to delete late-cancelled audio %s", record.audio_uri)
                 raise SynthesisCancelled()
-        self._transition(job_id, JobStatus.succeeded)
+        transitioned = self._transition(job_id, JobStatus.succeeded)
+        if transitioned.status == JobStatus.cancelled:
+            try:
+                self._delete_file(handles.gcs_client, record.audio_uri)
+            except Exception:
+                logger.exception("Failed to delete late-cancelled audio %s", record.audio_uri)
+            raise SynthesisCancelled()
 
     def _snapshot(self, job_id: str) -> JobRecord:
         with self._lock:

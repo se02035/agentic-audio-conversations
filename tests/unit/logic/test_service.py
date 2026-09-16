@@ -62,10 +62,11 @@ def test_translate_script_skips_when_already_target(sample_script_yaml: str) -> 
 
 @pytest.mark.asyncio
 async def test_create_audio_requires_gs_uri() -> None:
-    """create_audio rejects non-gs URIs."""
+    """create_audio rejects non-gs URIs and incomplete gs:// paths."""
     service, _manager, _gcs = make_service(instant_synth)
-    with pytest.raises(ScriptPayloadError):
-        await service.create_audio("/local/path.yaml")
+    for bad in ("/local/path.yaml", "gs:///script.yaml", "gs://bucket/", "gs://bucket"):
+        with pytest.raises(ScriptPayloadError):
+            await service.create_audio(bad)
 
 
 def test_download_writes_local_file(tmp_path: Path) -> None:

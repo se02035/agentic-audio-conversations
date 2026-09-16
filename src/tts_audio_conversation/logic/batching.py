@@ -52,7 +52,8 @@ def split_long_text(
         Non-empty text chunks that each fit the active limits.
 
     Raises:
-        ValueError: When ``max_chars`` (or ``max_utf8_bytes``) is less than 1.
+        ValueError: When ``max_chars`` (or ``max_utf8_bytes``) is less than 1,
+            or when the UTF-8 budget cannot encode the next character.
     """
     if max_chars < 1:
         raise ValueError("max_chars must be >= 1")
@@ -90,8 +91,7 @@ def _split_index(text: str, max_chars: int, max_utf8_bytes: int | None) -> int:
         while limit > 0 and _utf8_len(text[:limit]) > max_utf8_bytes:
             limit -= 1
     if limit <= 0:
-        # Extremely multi-byte first codepoint: advance by one character.
-        return 1
+        raise ValueError("UTF-8 byte budget cannot encode the next character")
     split_at = text.rfind(" ", 0, limit)
     if split_at <= 0:
         return limit

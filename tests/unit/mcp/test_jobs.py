@@ -7,6 +7,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 
@@ -160,6 +161,52 @@ def test_transition_rejects_cancelled_to_succeeded() -> None:
     assert result.status == JobStatus.cancelled
 
 
+def test_work_sync_deletes_audio_when_succeed_loses_to_cancel(
+    sample_script_yaml: str,
+) -> None:
+    """If cancel wins the succeed race, uploaded audio is deleted."""
+    from tts_audio_conversation.logic.exceptions import SynthesisCancelled
+
+    manager, gcs = job_manager(instant_synth)
+    script = ConversationScript.from_payload(sample_script_yaml)
+    job_id = "late-cancel-race"
+    prefix = manager.settings.job_prefix_uri(job_id)
+    audio_uri = f"{prefix}/output/audio.wav"
+    record = JobRecord(
+        job_id=job_id,
+        status=JobStatus.running,
+        audio_uri=audio_uri,
+        status_uri=f"{prefix}/status.json",
+        updated_at=utc_now(),
+    )
+    with manager._lock:
+        manager._jobs[job_id] = record
+        manager._cancel_events[job_id] = threading.Event()
+
+    original_transition = manager._transition
+
+    def cancel_before_succeed(
+        jid: str,
+        new_status: JobStatus,
+        *,
+        error: str | None = None,
+    ) -> JobRecord:
+        if new_status == JobStatus.succeeded:
+            with manager._lock:
+                manager._jobs[jid] = manager._jobs[jid].model_copy(
+                    update={"status": JobStatus.cancelled, "updated_at": utc_now()}
+                )
+        return original_transition(jid, new_status, error=error)
+
+    with (
+        pytest.raises(SynthesisCancelled),
+        patch.object(manager, "_transition", side_effect=cancel_before_succeed),
+    ):
+        manager._work_sync(job_id, script)
+    assert audio_uri not in gcs.objects
+    assert manager._jobs[job_id].status == JobStatus.cancelled
+
+
 async def test_status_and_cancel_stay_responsive_when_worker_pool_is_busy() -> None:
     """Status and cancel must not wait on the TTS worker executor."""
     manager, _gcs = job_manager(instant_synth)
@@ -200,3 +247,33 @@ async def test_status_and_cancel_stay_responsive_when_worker_pool_is_busy() -> N
         release.set()
         await occupy_future
         manager._executor.shutdown(wait=False)
+
+
+async def test_start_preflight_stays_responsive_when_worker_pool_is_busy(
+    sample_script_yaml: str,
+) -> None:
+    """Voice preflight must run on the control executor, not the TTS pool."""
+    manager, gcs = job_manager(instant_synth)
+    uri = "gs://test-eu-bucket/conversation/scripts/x/script.yaml"
+    gcs.objects[uri] = sample_script_yaml.encode()
+
+    manager._executor.shutdown(wait=False)
+    blocked = threading.Event()
+    release = threading.Event()
+    manager._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="conversation-tts")
+
+    def occupy() -> None:
+        blocked.set()
+        assert release.wait(timeout=5)
+
+    occupy_future = asyncio.get_running_loop().run_in_executor(manager._executor, occupy)
+    try:
+        assert await asyncio.to_thread(blocked.wait, 2)
+        t0 = time.perf_counter()
+        record = await manager.start(uri)
+        assert time.perf_counter() - t0 < 0.4
+        assert record.status == JobStatus.queued
+    finally:
+        release.set()
+        await occupy_future
+        await manager.close()

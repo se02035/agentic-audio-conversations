@@ -108,7 +108,13 @@ def test_library_cancel_running_job() -> None:
                     await asyncio.sleep(0.25)
             pytest.skip("job kept succeeding before cancel could apply")
 
-        final = asyncio.run(_run())
+        async def _run_then_close() -> JobStatus:
+            try:
+                return await _run()
+            finally:
+                await service.close()
+
+        final = asyncio.run(_run_then_close())
         assert final == JobStatus.cancelled
     finally:
         _cleanup(service, uris)

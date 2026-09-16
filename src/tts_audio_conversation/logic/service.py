@@ -39,9 +39,13 @@ def _language_matches(current: str, target: str) -> bool:
 
 
 def _require_gs_uri(uri: str) -> str:
-    """Return ``uri`` when it is a ``gs://`` object URI."""
+    """Return ``uri`` when it is a ``gs://`` object URI with bucket and object."""
     text = uri.strip()
-    if not text.startswith("gs://") or text.count("/") < 3:
+    if not text.startswith("gs://"):
+        raise ScriptPayloadError(f"Expected a gs://bucket/object URI, got '{uri}'.")
+    remainder = text[5:]
+    bucket, sep, object_name = remainder.partition("/")
+    if not sep or not bucket or not object_name:
         raise ScriptPayloadError(f"Expected a gs://bucket/object URI, got '{uri}'.")
     return text
 
