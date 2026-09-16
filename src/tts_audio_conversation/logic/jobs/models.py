@@ -36,7 +36,10 @@ class JobRecord(BaseModel):
     status: JobStatus = Field(description="queued | running | succeeded | failed | cancelled.")
     script_uri: str = Field(
         default="",
-        description="gs:// URI of the script used as TTS input (empty for inline start).",
+        description=(
+            "gs:// URI of the script used as TTS input. Empty only for legacy or "
+            "incomplete status.json rows; create_audio always starts from a GCS URI."
+        ),
     )
     audio_uri: str = Field(description="gs:// URI of the output WAV path.")
     status_uri: str = Field(description="gs:// URI of this status.json object.")

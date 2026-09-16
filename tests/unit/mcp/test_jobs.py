@@ -78,6 +78,31 @@ def test_transition_does_not_resume_failed_job() -> None:
     assert JobStatus.running not in ALLOWED_TRANSITIONS[JobStatus.failed]
 
 
+def test_transition_keeps_memory_when_persist_fails() -> None:
+    """A failed status.json write must not replace the in-memory record."""
+    manager, _gcs = job_manager(instant_synth)
+    job_id = "persist-fail"
+    prefix = manager.settings.job_prefix_uri(job_id)
+    record = JobRecord(
+        job_id=job_id,
+        status=JobStatus.queued,
+        audio_uri=f"{prefix}/output/audio.wav",
+        status_uri=f"{prefix}/status.json",
+        updated_at=utc_now(),
+    )
+    with manager._lock:
+        manager._jobs[job_id] = record
+        manager._cancel_events[job_id] = threading.Event()
+
+    def boom(_client: Any, _uri: str, _data: bytes, _content_type: str) -> None:
+        raise RuntimeError("gcs down")
+
+    manager._upload_bytes = boom
+    with pytest.raises(RuntimeError, match="gcs down"):
+        manager._transition(job_id, JobStatus.running)
+    assert manager._jobs[job_id].status == JobStatus.queued
+
+
 def test_work_sync_does_not_succeed_failed_job(sample_script_yaml: str) -> None:
     """A failed job is not reported as succeeded after TTS finishes."""
     manager, _gcs = job_manager(instant_synth)

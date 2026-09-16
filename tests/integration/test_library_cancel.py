@@ -79,7 +79,7 @@ def _cleanup(service: object, uris: list[str]) -> None:
 
 @pytest.mark.integration
 def test_library_cancel_running_job() -> None:
-    """create_audio then cancel_job reaches cancelled (or already succeeded)."""
+    """create_audio then cancel_job reaches cancelled (retry if already succeeded)."""
     settings = _require_live_settings()
     service = create_audio_conversation_service_from_adc(settings)
     uris: list[str] = []
@@ -88,24 +88,27 @@ def test_library_cancel_running_job() -> None:
         uris.append(uploaded.script_uri)
 
         async def _run() -> JobStatus:
-            job = await service.create_audio(uploaded.script_uri)
-            uris.extend([job.audio_uri, job.status_uri])
-            # Brief wait so the worker can leave queued when concurrency allows.
-            await asyncio.sleep(0.2)
-            cancelled = await service.cancel_job(job.job_id)
-            # Poll until terminal in case cancel raced with a fast success.
-            for _ in range(120):
-                status = await service.get_job(job.job_id)
-                if status.status in {
-                    JobStatus.cancelled,
-                    JobStatus.succeeded,
-                    JobStatus.failed,
-                }:
-                    return status.status
-                await asyncio.sleep(0.25)
-            return cancelled.status
+            for _attempt in range(3):
+                job = await service.create_audio(uploaded.script_uri)
+                uris.extend([job.audio_uri, job.status_uri])
+                # Brief wait so the worker can leave queued when concurrency allows.
+                await asyncio.sleep(0.05)
+                cancelled = await service.cancel_job(job.job_id)
+                if cancelled.status == JobStatus.succeeded:
+                    # Finished before cancel could apply — retry with a fresh job.
+                    continue
+                for _ in range(120):
+                    status = await service.get_job(job.job_id)
+                    if status.status == JobStatus.cancelled:
+                        return status.status
+                    if status.status == JobStatus.succeeded:
+                        break
+                    if status.status == JobStatus.failed:
+                        raise AssertionError(f"job failed during cancel: {status.error}")
+                    await asyncio.sleep(0.25)
+            pytest.skip("job kept succeeding before cancel could apply")
 
         final = asyncio.run(_run())
-        assert final in {JobStatus.cancelled, JobStatus.succeeded}
+        assert final == JobStatus.cancelled
     finally:
         _cleanup(service, uris)

@@ -24,7 +24,11 @@ class Settings(BaseSettings):
     )
     audio_conversation_gcs_staging_bucket: str | None = Field(
         default=None,
-        description="EU GCS bucket name for MCP audio and status objects.",
+        description=(
+            "GCS staging bucket for CLI and MCP (scripts, audio, status). "
+            "Speech and translation use EU endpoints; EU storage residency "
+            "depends on the caller selecting an EU-located bucket."
+        ),
     )
     audio_conversation_gcs_prefix: str = Field(
         default="conversation", description="Object prefix inside the bucket."
@@ -78,11 +82,13 @@ class Settings(BaseSettings):
         return text or "conversation"
 
     def require_gcs_bucket(self) -> str:
-        """Return the MCP bucket name or raise a configuration error."""
+        """Return the staging bucket name or raise a configuration error."""
         if not self.audio_conversation_gcs_staging_bucket:
             raise ValueError(
-                "AUDIO_CONVERSATION_GCS_STAGING_BUCKET is required for the MCP server. "
-                "Set it in .env to an EU-located bucket name (no gs:// prefix required)."
+                "AUDIO_CONVERSATION_GCS_STAGING_BUCKET is required for the CLI and MCP server. "
+                "Set it in .env to a bucket name (no gs:// prefix required). "
+                "Speech and translation use EU endpoints; choose an EU-located bucket "
+                "when EU storage residency is required."
             )
         return self.audio_conversation_gcs_staging_bucket
 

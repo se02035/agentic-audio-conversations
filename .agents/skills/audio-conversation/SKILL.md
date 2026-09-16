@@ -5,7 +5,8 @@ description: >-
   Chirp 3 HD voices in the EU regional endpoint (eu-texttospeech.googleapis.com).
   Use this skill whenever the user asks to create, validate, translate, synthesize,
   or download dialogue audio, 2-speaker conversations, or single-speaker
-  narration with full EU data sovereignty.
+  narration. Speech and translation use EU endpoints; EU storage residency
+  depends on the caller selecting an EU-located GCS bucket.
 ---
 
 # Audio Conversation Agent Skill

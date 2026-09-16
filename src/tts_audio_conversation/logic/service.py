@@ -286,6 +286,10 @@ class AudioConversationService:
         self._storage.download_file(uri, dest)
         return DownloadResult(local_path=dest, gcs_uri=uri)
 
+    async def close(self) -> None:
+        """Cancel in-flight jobs, await synthesis tasks, then shut down executors."""
+        await self._jobs.close()
+
     def _load_script(self, script_uri: str) -> ConversationScript:
         raw = self._storage.download_bytes(script_uri)
         if raw is None:

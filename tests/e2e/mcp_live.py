@@ -157,8 +157,7 @@ async def live_mcp_http(
             await asyncio.wait_for(serve_task, timeout=15)
         except (TimeoutError, asyncio.CancelledError):
             serve_task.cancel()
-        service._jobs._executor.shutdown(wait=False)
-        service._jobs._control_executor.shutdown(wait=False)
+        await service.close()
 
 
 def assert_mono_wav(path: Path, *, min_duration_secs: float | None = None) -> float:
@@ -202,6 +201,8 @@ async def poll_until_terminal(
 async def upload_and_start(client: Any, script_payload: str) -> dict[str, Any]:
     """Upload inline script then start_conversation; return start tool data."""
     uploaded = tool_data(await client.call_tool("upload_script", {"script": script_payload}))
-    return tool_data(
+    started = tool_data(
         await client.call_tool("start_conversation", {"script_uri": uploaded["script_uri"]})
     )
+    started["script_uri"] = uploaded["script_uri"]
+    return started

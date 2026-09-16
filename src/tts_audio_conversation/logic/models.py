@@ -93,7 +93,12 @@ class ConversationScript(BaseModel):
     """Validated conversation script: metadata, voices, and ordered turns."""
 
     metadata: ConversationMetadata = Field(..., description="Episode metadata")
-    voices: dict[str, VoiceConfig] = Field(..., min_length=1, description="Speaker voice mappings")
+    voices: dict[str, VoiceConfig] = Field(
+        ...,
+        min_length=1,
+        max_length=2,
+        description="Speaker voice mappings (1 or 2 speakers; Cloud TTS multi-speaker limit)",
+    )
     turns: list[DialogueTurn] = Field(..., min_length=1, description="Ordered dialogue turns")
 
     @model_validator(mode="after")

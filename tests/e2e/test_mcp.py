@@ -64,6 +64,7 @@ async def test_live_mcp_flow_start_status_gcs_download(tmp_path: Path) -> None:
                 assert "get_conversation_status" in tools
 
                 uploaded = tool_data(await client.call_tool("upload_script", {"script": payload}))
+                uris.append(uploaded["script_uri"])
                 valid = tool_data(
                     await client.call_tool(
                         "validate_script", {"script_uri": uploaded["script_uri"]}
@@ -161,8 +162,10 @@ async def test_live_mcp_two_concurrent_jobs_status_and_download(tmp_path: Path) 
                 assert first["audio_uri"] != second["audio_uri"]
                 uris.extend(
                     [
+                        first["script_uri"],
                         first["audio_uri"],
                         first["status_uri"],
+                        second["script_uri"],
                         second["audio_uri"],
                         second["status_uri"],
                     ]

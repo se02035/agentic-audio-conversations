@@ -82,6 +82,15 @@ class TestModels:
             ConversationScript.model_validate(sample_script_dict)
         assert "ghostspeaker" in str(excinfo.value)
 
+    def test_more_than_two_voices_raises(self, sample_script_dict: dict[str, Any]) -> None:
+        """Cloud TTS multi-speaker synthesis supports at most two voices."""
+        sample_script_dict["voices"]["third"] = {
+            "name": "en-US-Chirp3-HD-Charon",
+            "language_code": "en-US",
+        }
+        with pytest.raises(ValidationError):
+            ConversationScript.model_validate(sample_script_dict)
+
     def test_non_alphanumeric_speaker_alias_raises(self) -> None:
         """Cloud TTS aliases cannot contain underscores."""
         with pytest.raises(ValidationError):

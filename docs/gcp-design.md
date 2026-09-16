@@ -12,7 +12,7 @@ The product claim is that **speech and translation processing stay in the EU**. 
 | Dialogue translation | `translate-eu.googleapis.com`, location `europe-west1` | Global Translation, `us-central1` |
 | Audio at rest | EU-located GCS bucket you configure in GCP (library does not enforce residency on write) | Non-EU buckets (operational choice; AI RPCs still use EU endpoints) |
 
-Writes are enforced in code (`require_eu_bucket` / `require_eu_gcs_uri`) on MCP startup and CLI `synthesize --gcs-uri`. `download` only warns: reading an old non-EU object must not block recovery. Clients are always constructed with explicit project + ADC — never a bare `storage.Client()`.
+Bucket residency is the caller’s responsibility: choose an EU-located bucket in GCP. The library does not enforce residency on writes. Clients are always constructed with explicit project + ADC — never a bare `storage.Client()`.
 
 Agent invariants: [`.agents/rules/gcp-eu-sovereignty.md`](../.agents/rules/gcp-eu-sovereignty.md).
 

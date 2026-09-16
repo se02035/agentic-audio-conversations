@@ -188,9 +188,11 @@ def instant_synth(_client: Any, _script: Any, output_path: Path, **_kwargs: Any)
 async def upload_and_start(client: Any, script_payload: str) -> dict[str, Any]:
     """Upload inline script then start_conversation; return start tool data."""
     uploaded = tool_data(await client.call_tool("upload_script", {"script": script_payload}))
-    return tool_data(
+    started = tool_data(
         await client.call_tool("start_conversation", {"script_uri": uploaded["script_uri"]})
     )
+    started["script_uri"] = uploaded["script_uri"]
+    return started
 
 
 def tool_data(result: Any) -> dict[str, Any]:

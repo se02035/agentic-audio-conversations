@@ -35,8 +35,7 @@ SAMPLE_TURNS_BY_LANG: dict[str, list[DialogueTurn]] = {
         DialogueTurn(
             speaker="host",
             text=(
-                "Absolutely. And with data residency locked to "
-                "the European Union, compliance is guaranteed."
+                "Absolutely. And speech synthesis runs through the EU regional Cloud TTS endpoint."
             ),
             pause_after_ms=300,
         ),
@@ -69,8 +68,8 @@ SAMPLE_TURNS_BY_LANG: dict[str, list[DialogueTurn]] = {
         DialogueTurn(
             speaker="host",
             text=(
-                "Ganz genau. Besonders wichtig ist dabei die "
-                "vollständige DSGVO- und Datenresidenz-Konformität in der EU."
+                "Ganz genau. Die Sprachsynthese läuft dabei über den "
+                "regionalen EU-Endpunkt von Cloud TTS."
             ),
             pause_after_ms=300,
         ),
@@ -103,8 +102,8 @@ SAMPLE_TURNS_BY_LANG: dict[str, list[DialogueTurn]] = {
         DialogueTurn(
             speaker="host",
             text=(
-                "Absolument. Et le traitement des données reste "
-                "strictement confiné au sein de l'Union européenne."
+                "Absolument. Et la synthèse vocale utilise le point "
+                "de terminaison régional Cloud TTS de l'UE."
             ),
             pause_after_ms=300,
         ),

@@ -83,7 +83,16 @@ def speaker_voice_configs(
 
     Returns:
         Speaker configs and a map from original aliases to alphanumeric aliases.
+
+    Raises:
+        ValueError: When the script declares more than two voices.
     """
+    if len(script.voices) > 2:
+        raise ValueError(
+            f"ConversationScript has {len(script.voices)} voices; "
+            "Cloud TTS multi-speaker synthesis supports at most 2."
+        )
+
     speaker_configs: list[texttospeech.MultispeakerPrebuiltVoice] = []
     alias_map: dict[str, str] = {}
     for alias, voice in script.voices.items():

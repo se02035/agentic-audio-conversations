@@ -39,12 +39,15 @@ def test_cli_template_and_help() -> None:
 
 
 @pytest.mark.e2e
-def test_cli_validate_missing_uri_exits_nonzero() -> None:
+def test_cli_validate_missing_uri_exits_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
     """CLI validate on a missing gs:// URI exits non-zero."""
     _require_cli_env()
     if not os.environ.get("AUDIO_CONVERSATION_GCS_STAGING_BUCKET"):
         test_uri = os.environ["AUDIO_CONVERSATION_TEST_GCS_URI"]
-        os.environ["AUDIO_CONVERSATION_GCS_STAGING_BUCKET"] = test_uri[5:].split("/", 1)[0]
+        monkeypatch.setenv(
+            "AUDIO_CONVERSATION_GCS_STAGING_BUCKET",
+            test_uri[5:].split("/", 1)[0],
+        )
     bucket = os.environ["AUDIO_CONVERSATION_GCS_STAGING_BUCKET"]
     missing = f"gs://{bucket}/conversation/missing/scripts/x/script.yaml"
     runner = CliRunner()
@@ -54,14 +57,23 @@ def test_cli_validate_missing_uri_exits_nonzero() -> None:
 
 
 @pytest.mark.e2e
-def test_cli_upload_validate_synthesize_download(tmp_path: Path) -> None:
+def test_cli_upload_validate_synthesize_download(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """CLI upload → validate → synthesize (-o) against live staging."""
     _require_cli_env()
     # Prefer explicit staging bucket for Settings() inside CLI.
     if not os.environ.get("AUDIO_CONVERSATION_GCS_STAGING_BUCKET"):
         test_uri = os.environ["AUDIO_CONVERSATION_TEST_GCS_URI"]
-        os.environ["AUDIO_CONVERSATION_GCS_STAGING_BUCKET"] = test_uri[5:].split("/", 1)[0]
-    os.environ["AUDIO_CONVERSATION_GCS_PREFIX"] = f"conversation/cli_e2e_{uuid.uuid4().hex[:8]}"
+        monkeypatch.setenv(
+            "AUDIO_CONVERSATION_GCS_STAGING_BUCKET",
+            test_uri[5:].split("/", 1)[0],
+        )
+    monkeypatch.setenv(
+        "AUDIO_CONVERSATION_GCS_PREFIX",
+        f"conversation/cli_e2e_{uuid.uuid4().hex[:8]}",
+    )
 
     script = tmp_path / "episode.yaml"
     script.write_text(

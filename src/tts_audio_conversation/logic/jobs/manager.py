@@ -88,6 +88,7 @@ class JobManager:
         self._cancel_events: dict[str, threading.Event] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._lock = threading.Lock()
+        self._transition_lock = threading.Lock()
         self._handles_lock = threading.Lock()
         self._cached_handles: CloudHandles | None = None
         self._semaphore = asyncio.Semaphore(settings.audio_conversation_max_concurrent_jobs)
@@ -192,7 +193,7 @@ class JobManager:
                     return record.model_copy()
                 self._cancel_events[job_id].set()
         if record is not None:
-            return self._transition(job_id, JobStatus.cancelled)
+            return await self._atransition(job_id, JobStatus.cancelled)
 
         status_uri = f"{self.settings.job_prefix_uri(job_id)}/status.json"
         payload = await self._read_status_from_gcs(status_uri)
@@ -212,6 +213,17 @@ class JobManager:
             self._control_executor, self._persist_record, cancelled
         )
         return cancelled
+
+    async def close(self) -> None:
+        """Request cancel on active jobs, await tasks, then shut down executors."""
+        with self._lock:
+            for event in self._cancel_events.values():
+                event.set()
+            tasks = list(self._tasks.values())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._executor.shutdown(wait=True)
+        self._control_executor.shutdown(wait=True)
 
     def _prune(self) -> None:
         """Drop terminal in-memory jobs older than the prune TTL."""
@@ -239,14 +251,14 @@ class JobManager:
             with tracer.start_as_current_span("conversation.job") as span:
                 span.set_attribute("conversation.job_id", job_id)
                 if self._cancel_events[job_id].is_set():
-                    self._transition(job_id, JobStatus.cancelled)
+                    await self._atransition(job_id, JobStatus.cancelled)
                     return
                 await self._semaphore.acquire()
                 try:
                     if self._cancel_events[job_id].is_set():
-                        self._transition(job_id, JobStatus.cancelled)
+                        await self._atransition(job_id, JobStatus.cancelled)
                         return
-                    marked = self._transition(job_id, JobStatus.running)
+                    marked = await self._atransition(job_id, JobStatus.running)
                     if marked.status in TERMINAL_STATUSES:
                         return
                     await asyncio.get_running_loop().run_in_executor(
@@ -256,10 +268,10 @@ class JobManager:
                         script,
                     )
                 except SynthesisCancelled:
-                    self._transition(job_id, JobStatus.cancelled)
+                    await self._atransition(job_id, JobStatus.cancelled)
                 except Exception as exc:
                     logger.exception("Conversation job %s failed", job_id)
-                    self._transition(job_id, JobStatus.failed, error=str(exc))
+                    await self._atransition(job_id, JobStatus.failed, error=str(exc))
                 finally:
                     self._semaphore.release()
         finally:
@@ -292,12 +304,30 @@ class JobManager:
                     raise SynthesisCancelled()
                 return
             if cancel_event.is_set():
+                try:
+                    self._delete_file(handles.gcs_client, record.audio_uri)
+                except Exception:
+                    logger.exception("Failed to delete late-cancelled audio %s", record.audio_uri)
                 raise SynthesisCancelled()
         self._transition(job_id, JobStatus.succeeded)
 
     def _snapshot(self, job_id: str) -> JobRecord:
         with self._lock:
             return self._jobs[job_id].model_copy()
+
+    async def _atransition(
+        self,
+        job_id: str,
+        new_status: JobStatus,
+        *,
+        error: str | None = None,
+    ) -> JobRecord:
+        """Apply a status transition with GCS persist on the control executor."""
+
+        def _do() -> JobRecord:
+            return self._transition(job_id, new_status, error=error)
+
+        return await asyncio.get_running_loop().run_in_executor(self._control_executor, _do)
 
     def _transition(
         self,
@@ -306,23 +336,29 @@ class JobManager:
         *,
         error: str | None = None,
     ) -> JobRecord:
-        """Apply an allowed status transition and persist ``status.json``."""
-        with self._lock:
-            current = self._jobs[job_id]
-            if new_status not in ALLOWED_TRANSITIONS[current.status]:
-                return current.model_copy()
-            updates: dict[str, Any] = {
-                "status": new_status,
-                "updated_at": utc_now(),
-            }
-            if error is not None:
-                updates["error"] = error
-            elif new_status is JobStatus.succeeded:
-                updates["error"] = None
-            updated = current.model_copy(update=updates)
-            self._jobs[job_id] = updated
-        self._persist_record(updated)
-        return updated
+        """Apply an allowed status transition and persist ``status.json``.
+
+        Persistence completes before the in-memory map is updated. Concurrent
+        transitions are serialized; a failed persist leaves the previous record.
+        """
+        with self._transition_lock:
+            with self._lock:
+                current = self._jobs[job_id]
+                if new_status not in ALLOWED_TRANSITIONS[current.status]:
+                    return current.model_copy()
+                updates: dict[str, Any] = {
+                    "status": new_status,
+                    "updated_at": utc_now(),
+                }
+                if error is not None:
+                    updates["error"] = error
+                elif new_status is JobStatus.succeeded:
+                    updates["error"] = None
+                updated = current.model_copy(update=updates)
+            self._persist_record(updated)
+            with self._lock:
+                self._jobs[job_id] = updated
+            return updated
 
     def _persist_record(self, record: JobRecord) -> None:
         try:
@@ -342,12 +378,8 @@ class JobManager:
 
     async def _read_status_from_gcs(self, status_uri: str) -> dict[str, Any] | None:
         def _load() -> dict[str, Any] | None:
-            try:
-                handles = self._handles()
-                raw = self._download_bytes(handles.gcs_client, status_uri)
-            except Exception:
-                logger.exception("Failed to read %s", status_uri)
-                return None
+            handles = self._handles()
+            raw = self._download_bytes(handles.gcs_client, status_uri)
             if raw is None:
                 return None
             parsed: Any = json.loads(raw.decode("utf-8"))

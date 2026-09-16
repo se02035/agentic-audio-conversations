@@ -23,8 +23,11 @@ flowchart TD
 
 ## Batching
 
-- Pack consecutive turns until the next turn would exceed `MAX_BATCH_CHARS` (1500).
-- A turn longer than 1500 is split on word boundaries first; `pause_after_ms` stays on the last fragment.
+- Pack consecutive turns until the next turn would exceed `MAX_BATCH_CHARS` (1500)
+  or Gemini's MultiSpeakerMarkup UTF-8 byte cap (4000 bytes, including speaker/text
+  framing overhead).
+- A turn longer than either limit is split on word boundaries first; `pause_after_ms`
+  stays on the last fragment.
 - A non-null `pause_after_ms` **flushes** the current batch so silence can be inserted between Cloud responses (not inside one markup).
 
 Between batches, silence is inserted: the last turn’s `pause_after_ms`, or 300 ms by default.

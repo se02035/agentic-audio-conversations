@@ -110,6 +110,23 @@ class TestPodcastTTSClient:
         assert all(len(part) <= 20 for part in parts)
         assert "".join(parts).replace(" ", "") == text.replace(" ", "")
 
+    def test_split_long_text_rejects_non_positive_max_chars(self) -> None:
+        """max_chars must be at least 1 before any splitting."""
+        with pytest.raises(ValueError, match="max_chars"):
+            split_long_text("hello", max_chars=0)
+
+    def test_batch_turns_respects_utf8_byte_cap(self) -> None:
+        """Multi-byte text is split so MultiSpeakerMarkup stays under 4000 UTF-8 bytes."""
+        from tts_audio_conversation.logic.batching import markup_utf8_bytes
+
+        # Each "ü" is 2 UTF-8 bytes; 1200 chars ≈ 2400 bytes of text alone.
+        turn = DialogueTurn(speaker="host", text="ü" * 2200)
+        batches = batch_turns([turn], max_batch_chars=1500)
+        assert len(batches) >= 2
+        for batch in batches:
+            assert sum(len(t.text) for t in batch) <= 1500
+            assert markup_utf8_bytes(batch) <= 4000
+
     def test_synthesize_script_stitches_wav(
         self,
         tmp_path: Path,

@@ -14,7 +14,7 @@ authors = [
 ]
 dependencies = [
     "google-auth>=2.28.0",
-    "google-cloud-texttospeech>=2.16.0",
+    "google-cloud-texttospeech>=2.31.0",
     "google-cloud-storage>=2.14.0",
     "google-cloud-translate>=3.15.0",
     "pydantic>=2.6.0",
