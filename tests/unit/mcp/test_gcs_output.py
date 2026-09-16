@@ -9,7 +9,7 @@ from typing import Any
 from fastmcp import Client
 
 from tests.unit.mcp.helpers import instant_synth, mcp_app, upload_and_start
-from tts_audio_conversation.mcp.jobs import JobStatus
+from tts_audio_conversation.logic.jobs.models import JobStatus
 
 
 async def test_succeeded_job_writes_audio_and_status_to_gcs(sample_script_yaml: str) -> None:

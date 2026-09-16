@@ -17,7 +17,7 @@ Hatchling **src layout**, Python **>=3.11**, package `tts_audio_conversation`. I
 - [`src/tts_audio_conversation/logic/storage.py`](src/tts_audio_conversation/logic/storage.py) — GCS upload/download/delete (no residency checks)
 - [`src/tts_audio_conversation/logic/settings.py`](src/tts_audio_conversation/logic/settings.py) — env (`GOOGLE_CLOUD_PROJECT`, `AUDIO_CONVERSATION_*`, MCP bind, OTEL)
 - [`src/tts_audio_conversation/cli/`](src/tts_audio_conversation/cli/) — Click adapter (`uv run tts-audio-conversation`)
-- [`src/tts_audio_conversation/mcp/server.py`](src/tts_audio_conversation/mcp/server.py) — FastMCP HTTP tools at `/mcp`
+- [`src/tts_audio_conversation/mcp/server.py`](src/tts_audio_conversation/mcp/server.py) — FastMCP HTTP tools at `/mcp` (thin adapter; jobs live in `logic/jobs/`)
 - [`templates/`](templates/) — long-form sample scripts (slow live tests)
 - [`tests/unit/`](tests/unit/) — **unit** (mocked GCP: logic / cli / mcp)
 - [`tests/integration/`](tests/integration/) — **live** library facade / leaf GCP
@@ -62,9 +62,20 @@ Markers in [`pyproject.toml`](pyproject.toml); auto-applied in [`tests/conftest.
 | Default / CI | `uv run pytest -m unit --cov=… --cov-fail-under=85` | Always after code changes |
 | Live library | `uv run pytest -m "integration and not slow"` | ADC + `.env`; billed GCP |
 | Live adapters | `uv run pytest -m "e2e and not slow"` | ADC + staging bucket |
-| Long-form (~15 min each) | `uv run pytest -m slow` | Only if the user asks |
+| Long-form (4 tests) | `uv run pytest -m slow -n 4` | **Always** use `-n 4` (pytest-xdist); only if the user asks |
 
-Live tests skip unless `GOOGLE_CLOUD_PROJECT` and `AUDIO_CONVERSATION_TEST_GCS_URI` / staging bucket are set. Delete GCS blobs in `finally` unless `KEEP_TEST_ARTIFACTS=true`. Do not commit `*.wav`, `*.mp3`, or `.env`.
+### Slow / long-form (parallel)
+
+There are **four** `slow` tests (2 library + 2 MCP), each synthesizing a full [`templates/`](templates/) script (~8–15 min of TTS). They use unique GCS prefixes and free ports, so they are safe under xdist.
+
+```bash
+# Wall-clock ≈ one long job (~8–15 min), not 4× sequential (~hour)
+uv run pytest -m slow -n 4
+```
+
+Do **not** run `pytest -m slow` without `-n` unless debugging a single failure. Prefer `-n 4` (one worker per test) over `-n auto`. If TTS quota throttles, drop to `-n 2`. Env: `GOOGLE_CLOUD_PROJECT`, `AUDIO_CONVERSATION_GCS_STAGING_BUCKET` (MCP), `AUDIO_CONVERSATION_TEST_GCS_URI` (integration). Billed GCP.
+
+Live tests skip unless those vars are set. Delete GCS blobs in `finally` unless `KEEP_TEST_ARTIFACTS=true`. Do not commit `*.wav`, `*.mp3`, or `.env`. More detail: [`docs/creating-audio.md`](docs/creating-audio.md#live-and-slow-tests).
 
 ## Invariants
 

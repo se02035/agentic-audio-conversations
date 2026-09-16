@@ -96,6 +96,25 @@ uv run tts-audio-conversation-mcp
 
 Jobs run concurrently (`AUDIO_CONVERSATION_MAX_CONCURRENT_JOBS`, default 4). Extra jobs stay `queued`. One Uvicorn worker — do not scale the process horizontally.
 
+## Live and slow tests
+
+Short live suites (ADC + EU bucket in `.env`):
+
+```bash
+uv run pytest -m "integration and not slow"
+uv run pytest -m "e2e and not slow"
+```
+
+Long-form `slow` tests (unicorn fairytale + German AI software engineering, each via library and MCP) synthesize full [`templates/`](../templates/) scripts. There are four tests; each alone can take ~8–15 minutes of billed TTS.
+
+**Always parallelize** with pytest-xdist so wall-clock stays near one job instead of four sequential:
+
+```bash
+uv run pytest -m slow -n 4
+```
+
+Use `-n 4` (one worker per test), not bare `pytest -m slow`. Drop to `-n 2` if EU TTS quota throttles. Tests isolate GCS prefixes and MCP ports, so xdist is safe. Agent-oriented marker table: [`AGENTS.md`](../AGENTS.md).
+
 ## Troubleshooting
 
 - `502` / `504`: batch over ~1500–3500 characters. Cap is 1500; oversized turns are split. See [`synthesis.md`](synthesis.md).

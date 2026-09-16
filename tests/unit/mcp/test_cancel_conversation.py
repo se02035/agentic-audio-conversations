@@ -21,7 +21,7 @@ from tests.unit.mcp.helpers import (
     write_fake_wav,
 )
 from tts_audio_conversation.logic.exceptions import SynthesisCancelled
-from tts_audio_conversation.mcp.jobs import JobStatus
+from tts_audio_conversation.logic.jobs.models import JobStatus
 
 
 async def test_cancel_conversation_unknown_job_id() -> None:

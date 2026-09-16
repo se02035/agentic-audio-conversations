@@ -80,4 +80,4 @@ sequenceDiagram
 
 ## Develop
 
-Python ≥3.11, `uv sync --all-extras`. Copy [`.env.example`](.env.example). Quality commands and test markers: [`AGENTS.md`](AGENTS.md). License: Apache-2.0.
+Python ≥3.11, `uv sync --all-extras`. Copy [`.env.example`](.env.example). Quality commands and test markers: [`AGENTS.md`](AGENTS.md). Long-form live TTS (`slow`) is billed and slow — run with `uv run pytest -m slow -n 4` (see [`docs/creating-audio.md`](docs/creating-audio.md#live-and-slow-tests)). License: Apache-2.0.

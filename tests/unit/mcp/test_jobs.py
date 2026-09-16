@@ -11,9 +11,13 @@ from typing import Any
 import pytest
 
 from tests.unit.mcp.helpers import instant_synth, job_manager, mock_handles
-from tts_audio_conversation.logic.jobs.models import ALLOWED_TRANSITIONS
+from tts_audio_conversation.logic.jobs.manager import utc_now
+from tts_audio_conversation.logic.jobs.models import (
+    ALLOWED_TRANSITIONS,
+    JobRecord,
+    JobStatus,
+)
 from tts_audio_conversation.logic.models import ConversationScript
-from tts_audio_conversation.mcp.jobs import JobRecord, JobStatus, utc_now
 
 
 def test_handles_are_memoized() -> None:

@@ -115,5 +115,10 @@ markers = [
     "unit: fast tests with no live GCP (select with '-m unit')",
     "integration: live GCP EU tests requiring ADC and a bucket (deselect with '-m \"not integration\"')",
     "e2e: end-to-end adapter flows against live or heavily mocked stacks",
-    "slow: long-form live synthesis (~15 min per template)",
+    "slow: long-form live synthesis (~8–15 min per template; run with '-n 4')",
+]
+
+[dependency-groups]
+dev = [
+    "pytest-xdist>=3.8.0",
 ]

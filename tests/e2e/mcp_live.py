@@ -20,13 +20,13 @@ from dotenv import load_dotenv
 from google.cloud import storage  # type: ignore[attr-defined]
 
 from tts_audio_conversation.logic.auth import get_credentials_and_project
+from tts_audio_conversation.logic.jobs.models import JobStatus
 from tts_audio_conversation.logic.service import (
     AudioConversationService,
     create_audio_conversation_service,
 )
 from tts_audio_conversation.logic.settings import Settings
 from tts_audio_conversation.logic.storage import delete_file
-from tts_audio_conversation.mcp.jobs import JobStatus
 from tts_audio_conversation.mcp.server import MCP_PATH, create_server
 
 load_dotenv()

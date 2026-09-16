@@ -6,6 +6,7 @@ import asyncio
 import time
 import uuid
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastmcp import Client
@@ -19,9 +20,9 @@ from tests.e2e.mcp_live import (
     tool_data,
     wav_sample_rate,
 )
+from tts_audio_conversation.logic.jobs.models import JobStatus
 from tts_audio_conversation.logic.models import ConversationScript
 from tts_audio_conversation.logic.storage import download_file
-from tts_audio_conversation.mcp.jobs import JobStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _UNICORN = _REPO_ROOT / "templates" / "unicorn_fairytale.yaml"
@@ -40,7 +41,7 @@ def _load_unicorn() -> ConversationScript:
 
 
 def _load_german_ai() -> ConversationScript:
-    """Load and check the 2-speaker German AI podcast template."""
+    """Load and check the 2-speaker German AI conversation template."""
     assert _GERMAN_AI.exists(), f"Static template not found at {_GERMAN_AI}"
     script = ConversationScript.from_path(_GERMAN_AI)
     assert len(script.voices) == 2, f"Expected 2 speakers, found {len(script.voices)}"
@@ -53,122 +54,93 @@ def _load_german_ai() -> ConversationScript:
     return script
 
 
-@pytest.mark.e2e
-@pytest.mark.slow
-async def test_live_mcp_long_form_unicorn_and_german_ai(tmp_path: Path) -> None:
-    """Run both ~15-minute templates concurrently through MCP start/status/GCS download.
-
-    start_conversation must return immediately for each job. Both asyncio tasks stay live,
-    statuses are polled independently, and each downloaded WAV is longer than 300s.
-    """
-    unicorn = _load_unicorn()
-    german = _load_german_ai()
+async def _run_long_mcp_job(
+    *,
+    label: str,
+    script: ConversationScript,
+    tmp_path: Path,
+    prefix_stem: str,
+) -> None:
+    """Upload → start → poll → download one long-form MCP job."""
     suffix = uuid.uuid4().hex[:8]
-    prefix = f"conversation/live_mcp_long_{suffix}"
+    prefix = f"conversation/{prefix_stem}_{suffix}"
     uris: list[str] = []
 
-    async with live_mcp_http(prefix, max_concurrent_jobs=2) as live:
+    async with live_mcp_http(prefix, max_concurrent_jobs=1) as live:
         try:
             async with Client(live.url) as client:
-                up_u = tool_data(
-                    await client.call_tool("upload_script", {"script": unicorn.to_yaml()})
+                uploaded = tool_data(
+                    await client.call_tool("upload_script", {"script": script.to_yaml()})
                 )
-                up_g = tool_data(
-                    await client.call_tool("upload_script", {"script": german.to_yaml()})
+                valid = tool_data(
+                    await client.call_tool(
+                        "validate_script", {"script_uri": uploaded["script_uri"]}
+                    )
                 )
-                valid_u = tool_data(
-                    await client.call_tool("validate_script", {"script_uri": up_u["script_uri"]})
-                )
-                valid_g = tool_data(
-                    await client.call_tool("validate_script", {"script_uri": up_g["script_uri"]})
-                )
-                assert valid_u["valid"] is True
-                assert valid_g["valid"] is True
+                assert valid["valid"] is True
 
                 t0 = time.perf_counter()
-                job_u = tool_data(
-                    await client.call_tool("start_conversation", {"script_uri": up_u["script_uri"]})
+                started = tool_data(
+                    await client.call_tool(
+                        "start_conversation",
+                        {"script_uri": uploaded["script_uri"]},
+                    )
                 )
-                unicorn_elapsed = time.perf_counter() - t0
-                assert unicorn_elapsed < START_DEADLINE_SEC, (
-                    f"unicorn start_conversation blocked for {unicorn_elapsed:.2f}s; "
+                elapsed = time.perf_counter() - t0
+                assert elapsed < START_DEADLINE_SEC, (
+                    f"{label} start_conversation blocked for {elapsed:.2f}s; "
                     f"expected < {START_DEADLINE_SEC}s"
                 )
-                t1 = time.perf_counter()
-                job_g = tool_data(
-                    await client.call_tool("start_conversation", {"script_uri": up_g["script_uri"]})
-                )
-                german_elapsed = time.perf_counter() - t1
-                assert german_elapsed < START_DEADLINE_SEC, (
-                    f"German start_conversation blocked for {german_elapsed:.2f}s; "
-                    f"expected < {START_DEADLINE_SEC}s"
-                )
-                assert job_u["job_id"] != job_g["job_id"]
-                assert job_u["status"] in {JobStatus.queued, JobStatus.running}
-                assert job_g["status"] in {JobStatus.queued, JobStatus.running}
-                uris.extend(
-                    [
-                        job_u["audio_uri"],
-                        job_u["status_uri"],
-                        job_g["audio_uri"],
-                        job_g["status_uri"],
-                    ]
-                )
+                assert started["status"] in {JobStatus.queued, JobStatus.running}
+                uris.extend([started["audio_uri"], started["status_uri"], uploaded["script_uri"]])
 
-                jobs = live.service._jobs
-                live_tasks = [task for task in jobs._tasks.values() if not task.done()]
-                assert len(live_tasks) == 2
-
-                saw_both_active = False
+                status: dict[str, Any] = started
                 deadline = time.monotonic() + LONG_POLL_TIMEOUT_SEC
-                status_u = job_u
-                status_g = job_g
                 while time.monotonic() < deadline:
-                    status_u = tool_data(
+                    status = tool_data(
                         await client.call_tool(
-                            "get_conversation_status", {"job_id": job_u["job_id"]}
+                            "get_conversation_status",
+                            {"job_id": started["job_id"]},
                         )
                     )
-                    status_g = tool_data(
-                        await client.call_tool(
-                            "get_conversation_status", {"job_id": job_g["job_id"]}
-                        )
-                    )
-                    active = {JobStatus.queued, JobStatus.running}
-                    if status_u["status"] in active and status_g["status"] in active:
-                        saw_both_active = True
-                    if (
-                        status_u["status"] == JobStatus.succeeded
-                        and status_g["status"] == JobStatus.succeeded
-                    ):
+                    if status["status"] == JobStatus.succeeded:
                         break
-                    if status_u["status"] in {JobStatus.failed, JobStatus.cancelled}:
+                    if status["status"] in {JobStatus.failed, JobStatus.cancelled}:
                         raise AssertionError(
-                            f"unicorn job ended {status_u['status']}: {status_u.get('error')}"
-                        )
-                    if status_g["status"] in {JobStatus.failed, JobStatus.cancelled}:
-                        raise AssertionError(
-                            f"german AI job ended {status_g['status']}: {status_g.get('error')}"
+                            f"{label} job ended {status['status']}: {status.get('error')}"
                         )
                     await asyncio.sleep(1.0)
                 else:
-                    raise AssertionError(
-                        f"long-form jobs did not both succeed: "
-                        f"{status_u['status']}/{status_g['status']}"
-                    )
+                    raise AssertionError(f"{label} job did not succeed; last={status['status']}")
 
-                assert saw_both_active
-                assert status_u["status"] == JobStatus.succeeded
-                assert status_g["status"] == JobStatus.succeeded
-
-            wav_u = tmp_path / f"mcp_unicorn_{suffix}.wav"
-            wav_g = tmp_path / f"mcp_german_ai_{suffix}.wav"
-            download_file(live.gcs_client, job_u["audio_uri"], wav_u)
-            download_file(live.gcs_client, job_g["audio_uri"], wav_g)
-            assert_mono_wav(wav_u, min_duration_secs=300)
-            assert_mono_wav(wav_g, min_duration_secs=300)
-            assert wav_sample_rate(wav_u) == unicorn.metadata.sample_rate_hertz
-            assert wav_sample_rate(wav_g) == german.metadata.sample_rate_hertz
+            wav_path = tmp_path / f"mcp_{prefix_stem}_{suffix}.wav"
+            download_file(live.gcs_client, started["audio_uri"], wav_path)
+            assert_mono_wav(wav_path, min_duration_secs=300)
+            assert wav_sample_rate(wav_path) == script.metadata.sample_rate_hertz
         finally:
             for uri in uris:
                 delete_gcs_blob(live.gcs_client, uri)
+
+
+@pytest.mark.e2e
+@pytest.mark.slow
+async def test_live_mcp_long_form_unicorn_single_speaker(tmp_path: Path) -> None:
+    """Single-speaker Companion path: ~15-minute unicorn fairytale via MCP."""
+    await _run_long_mcp_job(
+        label="unicorn",
+        script=_load_unicorn(),
+        tmp_path=tmp_path,
+        prefix_stem="live_mcp_long_unicorn",
+    )
+
+
+@pytest.mark.e2e
+@pytest.mark.slow
+async def test_live_mcp_long_form_german_ai_two_speaker(tmp_path: Path) -> None:
+    """Two-speaker Chirp 3 HD path: ~15-minute German AI dialogue via MCP."""
+    await _run_long_mcp_job(
+        label="german_ai",
+        script=_load_german_ai(),
+        tmp_path=tmp_path,
+        prefix_stem="live_mcp_long_german_ai",
+    )

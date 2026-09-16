@@ -39,6 +39,21 @@ def test_cli_template_and_help() -> None:
 
 
 @pytest.mark.e2e
+def test_cli_validate_missing_uri_exits_nonzero() -> None:
+    """CLI validate on a missing gs:// URI exits non-zero."""
+    _require_cli_env()
+    if not os.environ.get("AUDIO_CONVERSATION_GCS_STAGING_BUCKET"):
+        test_uri = os.environ["AUDIO_CONVERSATION_TEST_GCS_URI"]
+        os.environ["AUDIO_CONVERSATION_GCS_STAGING_BUCKET"] = test_uri[5:].split("/", 1)[0]
+    bucket = os.environ["AUDIO_CONVERSATION_GCS_STAGING_BUCKET"]
+    missing = f"gs://{bucket}/conversation/missing/scripts/x/script.yaml"
+    runner = CliRunner()
+    result = runner.invoke(main, ["validate", "--script-uri", missing])
+    assert result.exit_code != 0
+    assert "fail" in result.output.lower() or "not found" in result.output.lower()
+
+
+@pytest.mark.e2e
 def test_cli_upload_validate_synthesize_download(tmp_path: Path) -> None:
     """CLI upload → validate → synthesize (-o) against live staging."""
     _require_cli_env()

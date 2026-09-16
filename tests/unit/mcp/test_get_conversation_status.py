@@ -20,7 +20,7 @@ from tests.unit.mcp.helpers import (
     upload_and_start,
     write_fake_wav,
 )
-from tts_audio_conversation.mcp.jobs import JobStatus
+from tts_audio_conversation.logic.jobs.models import JobStatus
 
 
 async def _wait_for_status(
@@ -122,7 +122,7 @@ async def test_terminal_jobs_are_pruned_from_memory(sample_script_yaml: str) -> 
     from datetime import timedelta
 
     from tests.unit.mcp.helpers import mcp_settings
-    from tts_audio_conversation.mcp.jobs import utc_now
+    from tts_audio_conversation.logic.jobs.manager import utc_now
 
     mcp, service, _gcs = mcp_app(
         instant_synth,

@@ -20,6 +20,7 @@ from tests.e2e.mcp_live import (
     tool_data,
     upload_and_start,
 )
+from tts_audio_conversation.logic.jobs.models import JobStatus
 from tts_audio_conversation.logic.models import (
     ConversationMetadata,
     ConversationScript,
@@ -27,7 +28,6 @@ from tts_audio_conversation.logic.models import (
     VoiceConfig,
 )
 from tts_audio_conversation.logic.storage import download_file
-from tts_audio_conversation.mcp.jobs import JobStatus
 
 
 def _smoke_script_yaml(*, title: str, line: str) -> str:

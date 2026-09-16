@@ -20,7 +20,7 @@ from tests.unit.mcp.helpers import (
     upload_and_start,
     write_fake_wav,
 )
-from tts_audio_conversation.mcp.jobs import JobStatus
+from tts_audio_conversation.logic.jobs.models import JobStatus
 
 
 async def test_start_conversation_returns_immediately_with_gcs_uris(

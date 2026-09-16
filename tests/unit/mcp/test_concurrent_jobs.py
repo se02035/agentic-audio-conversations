@@ -17,7 +17,7 @@ from tests.unit.mcp.helpers import (
     upload_and_start,
     write_fake_wav,
 )
-from tts_audio_conversation.mcp.jobs import JobStatus
+from tts_audio_conversation.logic.jobs.models import JobStatus
 
 
 async def test_two_jobs_run_as_separate_asyncio_tasks_with_independent_status(

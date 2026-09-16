@@ -47,3 +47,15 @@ gs://{bucket}/{prefix}/
 ```
 
 Prefix defaults to `conversation` (`AUDIO_CONVERSATION_GCS_PREFIX`).
+
+## Errors
+
+| Call | Invalid input | Behavior |
+| --- | --- | --- |
+| `validate_script` | bad/missing URI or payload | Soft: `ScriptValidationResult(valid=False, error=…)` — never raises |
+| `upload_script` | empty/oversized/invalid YAML/JSON | Raises `ScriptPayloadError` |
+| `translate_script` / `create_audio` / `download` | non-`gs://` or missing object | Raises `ScriptPayloadError` |
+| `create_audio` | unknown Chirp 3 HD voice | Raises `VoiceCatalogError` (before enqueue) |
+| `get_job` / `cancel_job` | unknown id | Raises `JobNotFound` |
+| Worker TTS / upload failure | after job started | `JobRecord.status == failed` with `error` string (no raise to caller of `create_audio`) |
+| Cooperative cancel | between batches | `JobRecord.status == cancelled` |
