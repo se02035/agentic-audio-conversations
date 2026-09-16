@@ -11,15 +11,25 @@ from dotenv import load_dotenv
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from opentelemetry import trace
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from tts_audio_conversation.logic.exceptions import (
     JobNotFound,
     ScriptPayloadError,
+    VoiceCatalogError,
+)
+from tts_audio_conversation.logic.jobs.models import JobRecord
+from tts_audio_conversation.logic.results import (
+    ScriptUploadResult,
+    ScriptValidationResult,
+    TranslateScriptResult,
+)
+from tts_audio_conversation.logic.service import (
+    AudioConversationService,
+    create_audio_conversation_service_from_adc,
 )
 from tts_audio_conversation.logic.settings import Settings
 from tts_audio_conversation.logic.telemetry import setup_telemetry
-from tts_audio_conversation.mcp.jobs import JobManager, JobRecord, validate_payload
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -27,23 +37,15 @@ tracer = trace.get_tracer(__name__)
 MCP_PATH = "/mcp"
 
 
-class ValidateScriptResult(BaseModel):
-    """Structured result for ``validate_script``."""
-
-    valid: bool
-    title: str = ""
-    language_code: str = ""
-    speakers: list[str] = Field(default_factory=list)
-    turn_count: int = 0
-    total_characters: int = 0
-    error: str | None = None
-
-
-def create_server(manager: JobManager, *, name: str = "tts-audio-conversation") -> FastMCP[Any]:
-    """Build a FastMCP app bound to an existing ``JobManager``.
+def create_server(
+    service: AudioConversationService,
+    *,
+    name: str = "tts-audio-conversation",
+) -> FastMCP[Any]:
+    """Build a FastMCP app bound to an ``AudioConversationService``.
 
     Args:
-        manager: Job manager used by the tools.
+        service: Library facade used by all tools.
         name: MCP server name shown to clients.
 
     Returns:
@@ -51,25 +53,59 @@ def create_server(manager: JobManager, *, name: str = "tts-audio-conversation") 
     """
     mcp = FastMCP(name, tasks=False)
 
+    @mcp.tool(description="Upload an inline YAML/JSON script to staging GCS; return script_uri.")
+    def upload_script(
+        script: str = Field(description="YAML or JSON conversation script payload."),
+    ) -> ScriptUploadResult:
+        """Write ``…/scripts/{id}/script.yaml`` and return its URI."""
+        try:
+            return service.upload_script(script)
+        except ScriptPayloadError as exc:
+            raise ToolError(str(exc)) from exc
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
+    @mcp.tool(description="Validate a script at a gs:// URI. Does not call list_voices.")
+    def validate_script(
+        script_uri: str = Field(description="gs:// URI from upload_script."),
+    ) -> ScriptValidationResult:
+        """Soft-validate an uploaded script."""
+        return service.validate_script(script_uri)
+
     @mcp.tool(
         description=(
-            "Start single- or multi-speaker conversation synthesis. Validates voices via "
-            "EU list_voices, writes queued status.json, and returns immediately. "
-            "Poll get_conversation_status; audio is never downloaded here."
+            "Translate a gs:// script via translate-eu; write sibling script.{lang}.yaml; "
+            "return output_uri (not body)."
+        )
+    )
+    def translate_script(
+        script_uri: str = Field(description="gs:// URI from upload_script."),
+        target_language: str = Field(description="BCP-47 target, e.g. de-DE."),
+    ) -> TranslateScriptResult:
+        """Translate and return the output URI for start_conversation."""
+        try:
+            return service.translate_script(script_uri, target_language)
+        except ScriptPayloadError as exc:
+            raise ToolError(str(exc)) from exc
+        except ValueError as exc:
+            raise ToolError(str(exc)) from exc
+
+    @mcp.tool(
+        description=(
+            "Start synthesis from a gs:// script_uri. Preflight EU list_voices, write queued "
+            "status.json, return immediately. Poll get_conversation_status."
         )
     )
     async def start_conversation(
-        script: str = Field(description="YAML or JSON conversation script payload."),
-        translate_to: str | None = Field(
-            default=None,
-            description="Optional BCP-47 language tag. Translation runs in the worker, not here.",
-        ),
+        script_uri: str = Field(description="gs:// URI of the script to synthesize."),
     ) -> JobRecord:
-        """Validate the script, enqueue a job, and return before any TTS call."""
+        """Enqueue a job and return before any TTS call."""
         with tracer.start_as_current_span("start_conversation"):
             try:
-                return await manager.start(script, translate_to)
+                return await service.create_audio(script_uri)
             except ScriptPayloadError as exc:
+                raise ToolError(str(exc)) from exc
+            except VoiceCatalogError as exc:
                 raise ToolError(str(exc)) from exc
             except ValueError as exc:
                 raise ToolError(str(exc)) from exc
@@ -80,7 +116,7 @@ def create_server(manager: JobManager, *, name: str = "tts-audio-conversation") 
     ) -> JobRecord:
         """Return queued, running, succeeded, failed, or cancelled."""
         try:
-            return await manager.get_status(job_id)
+            return await service.get_job(job_id)
         except JobNotFound as exc:
             raise ToolError(str(exc)) from exc
 
@@ -95,16 +131,9 @@ def create_server(manager: JobManager, *, name: str = "tts-audio-conversation") 
     ) -> JobRecord:
         """Set the cooperative cancel flag without waiting for TTS."""
         try:
-            return await manager.cancel(job_id)
+            return await service.cancel_job(job_id)
         except JobNotFound as exc:
             raise ToolError(str(exc)) from exc
-
-    @mcp.tool(description="Validate a YAML or JSON script payload. Does not write GCS.")
-    def validate_script(
-        script: str = Field(description="YAML or JSON conversation script payload."),
-    ) -> ValidateScriptResult:
-        """Check schema and AUDIO_CONVERSATION_MAX_SCRIPT_BYTES without starting a job."""
-        return ValidateScriptResult.model_validate(validate_payload(script, manager.settings))
 
     return mcp
 
@@ -127,8 +156,8 @@ def main() -> None:
         logger.error("%s", exc)
         raise SystemExit(1) from exc
     setup_telemetry(settings)
-    manager = JobManager(settings)
-    mcp = create_server(manager)
+    service = create_audio_conversation_service_from_adc(settings)
+    mcp = create_server(service)
     url = f"http://{host}:{settings.mcp_port}{MCP_PATH}"
     logger.info("MCP Streamable HTTP listening at %s (anonymous, single process)", url)
     mcp.run(

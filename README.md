@@ -1,16 +1,16 @@
 # Agentic Audio Conversations
 
-Generate spoken **audio conversations** from a YAML (or JSON) script using Google Cloud **Chirp 3 HD** Text-to-Speech, with **EU data residency** and **EU ML processing**. Synthesis, translation, and stored audio stay on EU regional endpoints and EU GCS buckets — not the global TTS/Translation APIs.
+Generate spoken **audio conversations** from a YAML (or JSON) script using Google Cloud **Chirp 3 HD** Text-to-Speech, with **EU ML processing** on regional endpoints. Synthesis and translation use EU TTS/Translation APIs; stage scripts and audio on an EU GCS bucket you configure.
 
-Agents and humans share one library (`src/tts_audio_conversation/logic`). A **CLI** writes a local WAV; a **FastMCP HTTP** server starts the same work as a background job and leaves the file on an EU GCS bucket.
+Agents and humans share one library facade: `AudioConversationService`. The **CLI** and **FastMCP HTTP** server are thin adapters over the same upload → translate → job flow.
 
 ## The problem
 
 Cloud TTS can sound like a two-person conversation, but the APIs do not line up with a long, sovereign, agent-driven episode:
 
 1. **Multi-speaker and long-form are different RPCs.** `synthesizeLongAudio` handles length, not dialogue. `synthesize_speech` with `multi_speaker_markup` handles Chirp 3 HD conversation, not a 15-minute script in one call (payloads much above ~1500 characters often `502` / `504`).
-2. **Global TTS is not EU processing.** Default Text-to-Speech and Translation endpoints are not the EU regional ones. A US GCS bucket would also break residency for the audio at rest.
-3. **Agents cannot wait on TTS.** A blocking MCP tool that runs for minutes is unusable. Jobs must return a `job_id` immediately and survive a process crash without pretending they can resume billed batches.
+2. **Global TTS is not EU processing.** Default Text-to-Speech and Translation endpoints are not the EU regional ones.
+3. **Agents cannot wait on TTS.** A blocking MCP tool that runs for minutes is unusable. Jobs must return a `job_id` immediately.
 
 ```mermaid
 flowchart LR
@@ -30,56 +30,51 @@ It treats Cloud TTS as a **batch engine**, not a one-shot renderer:
 - Official `TextToSpeechClient.synthesize_speech` + `multi_speaker_markup` on `eu-texttospeech.googleapis.com`
 - Turns packed at ≤1500 characters, GAPIC retry per batch, LINEAR16 WAV stitched locally
 - Translation on `translate-eu.googleapis.com` / `europe-west1`
-- Writes only to GCS buckets on the EU allowlist: `EU`, `EUR4`, `europe-central2`, `europe-north1`, `europe-north2`, `europe-southwest1`, `europe-west1`, `europe-west3`, `europe-west4`, `europe-west8`, `europe-west9`, `europe-west10`, `europe-west12`
-- MCP `start_conversation` returns before `synthesize_speech`; status is polled; audio is fetched from GCS by the caller
+- Scripts and jobs staged under `…/conversation/scripts/…` and `…/conversation/jobs/…`
+- Same orchestration for CLI and MCP: upload → optional translate → async job; MCP returns before `synthesize_speech`
 
 ```mermaid
 flowchart LR
-  script[YAML_or_JSON_script]
-  logic[logic_package]
-  cli[CLI]
-  mcp[MCP_HTTP]
+  upload[upload_script]
+  translate[translate_script]
+  job[create_audio_job]
   tts[EU_TTS]
-  translate[EU_Translate]
-  gcs[EU_GCS]
-  script --> cli
-  script --> mcp
-  cli --> logic
-  mcp --> logic
-  logic --> tts
-  logic --> translate
-  logic --> gcs
+  gcs[GCS_staging]
+  upload --> gcs
+  translate --> gcs
+  job --> tts
+  job --> gcs
 ```
-
-Single-speaker narration is supported: Cloud TTS still needs two speaker definitions, so an unused **Companion** voice is injected.
 
 ```mermaid
 sequenceDiagram
   participant Client
-  participant MCP
-  participant Worker
+  participant API as CLI_or_MCP
+  participant Svc as AudioConversationService
   participant TTS
   participant GCS
-  Client->>MCP: start_conversation script
-  MCP->>TTS: list_voices
-  MCP->>GCS: status.json queued
-  MCP-->>Client: job_id and gs URIs
+  Client->>API: upload_script
+  API->>Svc: upload_script
+  Svc->>GCS: scripts/id/script.yaml
+  Client->>API: start_conversation script_uri
+  API->>Svc: create_audio
+  Svc->>TTS: list_voices
+  Svc->>GCS: status.json queued
+  API-->>Client: job_id and gs URIs
   loop Each batch
-    Worker->>TTS: synthesize_speech
-    TTS-->>Worker: LINEAR16 chunk
+    Svc->>TTS: synthesize_speech
   end
-  Worker->>GCS: audio.wav and status succeeded
-  Client->>MCP: get_conversation_status
-  MCP-->>Client: succeeded plus audio_uri
+  Svc->>GCS: audio.wav and status succeeded
 ```
 
 ## Documentation
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/creating-audio.md`](docs/creating-audio.md) | Setup, script schema, CLI, MCP tools, troubleshooting |
-| [`docs/synthesis.md`](docs/synthesis.md) | Batching, stitching, Companion voice, retries, cancel |
-| [`docs/gcp-design.md`](docs/gcp-design.md) | Why these GCP APIs and EU endpoints, not Long Audio or global TTS |
+| [`docs/creating-audio.md`](docs/creating-audio.md) | Setup, script schema, CLI, MCP tools |
+| [`docs/library-api.md`](docs/library-api.md) | `AudioConversationService` quickstart |
+| [`docs/synthesis.md`](docs/synthesis.md) | Batching, stitching, Companion voice, retries |
+| [`docs/gcp-design.md`](docs/gcp-design.md) | Why these GCP APIs and EU endpoints |
 | [`AGENTS.md`](AGENTS.md) | Layout, quality gate, which tests to run |
 | [`.agents/skills/audio-conversation/SKILL.md`](.agents/skills/audio-conversation/SKILL.md) | Agent skill for producing episodes |
 

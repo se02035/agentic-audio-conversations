@@ -39,11 +39,6 @@ class Settings(BaseSettings):
         ge=1,
         description="In-flight TTS job cap. Extra jobs stay queued in the background.",
     )
-    audio_conversation_job_stale_ttl_sec: int = Field(
-        default=1800,
-        ge=1,
-        description="queued/running jobs with no heartbeat older than this are failed.",
-    )
     audio_conversation_job_prune_ttl_sec: int = Field(
         default=3600,
         ge=1,
@@ -102,9 +97,14 @@ class Settings(BaseSettings):
         return host
 
     def job_prefix_uri(self, job_id: str) -> str:
-        """Return ``gs://bucket/prefix/job_id`` for a job."""
+        """Return ``gs://bucket/prefix/jobs/job_id`` for a job."""
         bucket = self.require_gcs_bucket()
-        return f"gs://{bucket}/{self.audio_conversation_gcs_prefix}/{job_id}"
+        return f"gs://{bucket}/{self.audio_conversation_gcs_prefix}/jobs/{job_id}"
+
+    def script_prefix_uri(self, script_id: str) -> str:
+        """Return ``gs://bucket/prefix/scripts/script_id`` for an uploaded script."""
+        bucket = self.require_gcs_bucket()
+        return f"gs://{bucket}/{self.audio_conversation_gcs_prefix}/scripts/{script_id}"
 
     def parsed_trace_exporters(self) -> list[str]:
         """Return normalized exporter names from ``OTEL_TRACES_EXPORTER``."""

@@ -1,41 +1,55 @@
 """Shared library, CLI, and FastMCP HTTP server for EU Chirp 3 HD conversations."""
 
-from tts_audio_conversation.logic.auth import get_credentials_and_project, resolve_project_id
-from tts_audio_conversation.logic.client import (
+from tts_audio_conversation.logic import (
+    EU_TRANSLATE_ENDPOINT,
     EU_TTS_ENDPOINT,
     MAX_BATCH_CHARS,
-    eu_tts_client,
-    list_chirp3_voices,
-    synthesize_script,
-)
-from tts_audio_conversation.logic.models import (
+    AudioConversationService,
     AudioEncoding,
     ConversationMetadata,
     ConversationScript,
+    ConversationTranslator,
     DialogueTurn,
+    DownloadResult,
+    JobNotFound,
+    JobRecord,
+    JobStatus,
+    ScriptPayloadError,
+    ScriptUploadResult,
+    ScriptValidationResult,
+    SynthesisCancelled,
+    TranslateScriptResult,
+    VoiceCatalogError,
     VoiceConfig,
+    VoiceInfo,
+    create_audio_conversation_service,
+    create_audio_conversation_service_from_adc,
+    create_script_template,
 )
-from tts_audio_conversation.logic.storage import delete_file, download_file, upload_file
-from tts_audio_conversation.logic.template import create_script_template
-from tts_audio_conversation.logic.translator import EU_TRANSLATE_ENDPOINT, ConversationTranslator
 
 __all__ = [
+    "AudioConversationService",
     "AudioEncoding",
-    "DialogueTurn",
-    "EU_TRANSLATE_ENDPOINT",
-    "EU_TTS_ENDPOINT",
-    "MAX_BATCH_CHARS",
     "ConversationMetadata",
     "ConversationScript",
     "ConversationTranslator",
+    "DialogueTurn",
+    "DownloadResult",
+    "EU_TRANSLATE_ENDPOINT",
+    "EU_TTS_ENDPOINT",
+    "JobNotFound",
+    "JobRecord",
+    "JobStatus",
+    "MAX_BATCH_CHARS",
+    "ScriptPayloadError",
+    "ScriptUploadResult",
+    "ScriptValidationResult",
+    "SynthesisCancelled",
+    "TranslateScriptResult",
+    "VoiceCatalogError",
     "VoiceConfig",
+    "VoiceInfo",
+    "create_audio_conversation_service",
+    "create_audio_conversation_service_from_adc",
     "create_script_template",
-    "delete_file",
-    "download_file",
-    "eu_tts_client",
-    "get_credentials_and_project",
-    "list_chirp3_voices",
-    "resolve_project_id",
-    "synthesize_script",
-    "upload_file",
 ]

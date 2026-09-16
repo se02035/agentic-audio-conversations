@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import timedelta
 from typing import Any
 
 import pytest
-from opentelemetry import context as otel_context
 
 from tests.mcp.helpers import instant_synth, job_manager, mock_handles
+from tts_audio_conversation.logic.jobs.models import ALLOWED_TRANSITIONS
 from tts_audio_conversation.logic.models import ConversationScript
 from tts_audio_conversation.mcp.jobs import JobRecord, JobStatus, utc_now
 
@@ -42,140 +40,95 @@ def test_persist_record_propagates_upload_failure() -> None:
         raise RuntimeError("gcs down")
 
     manager._upload_bytes = boom
+    prefix = manager.settings.job_prefix_uri("job-1")
     record = JobRecord(
         job_id="job-1",
         status=JobStatus.queued,
-        audio_uri="gs://test-eu-bucket/conversation/job-1/audio.wav",
-        status_uri="gs://test-eu-bucket/conversation/job-1/status.json",
+        audio_uri=f"{prefix}/output/audio.wav",
+        status_uri=f"{prefix}/status.json",
         updated_at=utc_now(),
     )
     with pytest.raises(RuntimeError, match="gcs down"):
         manager._persist_record(record)
 
 
-def test_mark_does_not_resume_failed_job() -> None:
+def test_transition_does_not_resume_failed_job() -> None:
     """Failed jobs stay failed when a worker tries to mark them running."""
     manager, _gcs = job_manager(instant_synth)
     job_id = "failed-job"
+    prefix = manager.settings.job_prefix_uri(job_id)
     record = JobRecord(
         job_id=job_id,
         status=JobStatus.failed,
-        audio_uri="gs://test-eu-bucket/conversation/failed-job/audio.wav",
-        status_uri="gs://test-eu-bucket/conversation/failed-job/status.json",
-        error="stale",
+        audio_uri=f"{prefix}/output/audio.wav",
+        status_uri=f"{prefix}/status.json",
+        error="boom",
         updated_at=utc_now(),
     )
     with manager._lock:
         manager._jobs[job_id] = record
         manager._cancel_events[job_id] = threading.Event()
-    marked = manager._mark(job_id, JobStatus.running, progress="starting")
+    marked = manager._transition(job_id, JobStatus.running)
     assert marked.status == JobStatus.failed
     assert manager._jobs[job_id].status == JobStatus.failed
+    assert JobStatus.running not in ALLOWED_TRANSITIONS[JobStatus.failed]
 
 
 def test_work_sync_does_not_succeed_failed_job(sample_script_yaml: str) -> None:
-    """A stale-failed job is not reported as succeeded after TTS finishes."""
+    """A failed job is not reported as succeeded after TTS finishes."""
     manager, _gcs = job_manager(instant_synth)
     script = ConversationScript.from_payload(sample_script_yaml)
-    job_id = "stale-failed"
+    job_id = "already-failed"
+    prefix = manager.settings.job_prefix_uri(job_id)
     record = JobRecord(
         job_id=job_id,
         status=JobStatus.failed,
-        audio_uri="gs://test-eu-bucket/conversation/stale-failed/audio.wav",
-        status_uri="gs://test-eu-bucket/conversation/stale-failed/status.json",
-        error="stale",
+        audio_uri=f"{prefix}/output/audio.wav",
+        status_uri=f"{prefix}/status.json",
+        error="boom",
         updated_at=utc_now(),
     )
     with manager._lock:
         manager._jobs[job_id] = record
         manager._cancel_events[job_id] = threading.Event()
-    manager._work_sync(job_id, script, None, otel_context.get_current())
+    manager._work_sync(job_id, script)
     assert manager._jobs[job_id].status == JobStatus.failed
 
 
 async def test_start_rolls_back_memory_when_queued_persist_fails(sample_script_yaml: str) -> None:
     """A failed initial status.json write must not leave a queued job in memory."""
-    manager, _gcs = job_manager(instant_synth)
+    manager, gcs = job_manager(instant_synth)
+    uri = "gs://test-eu-bucket/conversation/scripts/x/script.yaml"
+    gcs.objects[uri] = sample_script_yaml.encode()
 
     def boom(_client: Any, _uri: str, _data: bytes, _content_type: str) -> None:
         raise RuntimeError("gcs down")
 
     manager._upload_bytes = boom
     with pytest.raises(RuntimeError, match="gcs down"):
-        await manager.start(sample_script_yaml)
+        await manager.start(uri)
     assert manager._jobs == {}
     assert manager._cancel_events == {}
     assert manager._tasks == {}
 
 
-def test_maybe_fail_stale_keeps_fresh_in_memory_record() -> None:
-    """A stale snapshot must not fail a job that has since heartbeated."""
-    manager, gcs = job_manager(instant_synth)
-    job_id = "live-job"
+def test_transition_rejects_cancelled_to_succeeded() -> None:
+    """Cancelled must not become succeeded (illegal edge)."""
+    manager, _gcs = job_manager(instant_synth)
+    job_id = "cancel-race"
     prefix = manager.settings.job_prefix_uri(job_id)
-    stale = JobRecord(
+    record = JobRecord(
         job_id=job_id,
-        status=JobStatus.running,
-        audio_uri=f"{prefix}/audio.wav",
-        status_uri=f"{prefix}/status.json",
-        progress="batch 1/9",
-        updated_at=utc_now() - timedelta(hours=2),
-    )
-    fresh = stale.model_copy(update={"updated_at": utc_now(), "progress": "batch 2/9"})
-    with manager._lock:
-        manager._jobs[job_id] = fresh
-        manager._cancel_events[job_id] = threading.Event()
-    result = manager._maybe_fail_stale(stale, True)
-    assert result.status == JobStatus.running
-    assert result.progress == "batch 2/9"
-    assert manager._jobs[job_id].status == JobStatus.running
-    assert f"{prefix}/status.json" not in gcs.objects
-
-
-def test_maybe_fail_stale_preserves_terminal_in_memory_record() -> None:
-    """A stale running snapshot must not overwrite a succeeded in-memory job."""
-    manager, gcs = job_manager(instant_synth)
-    job_id = "done-job"
-    prefix = manager.settings.job_prefix_uri(job_id)
-    succeeded = JobRecord(
-        job_id=job_id,
-        status=JobStatus.succeeded,
-        audio_uri=f"{prefix}/audio.wav",
+        status=JobStatus.cancelled,
+        audio_uri=f"{prefix}/output/audio.wav",
         status_uri=f"{prefix}/status.json",
         updated_at=utc_now(),
     )
-    stale_running = succeeded.model_copy(
-        update={"status": JobStatus.running, "updated_at": utc_now() - timedelta(hours=2)}
-    )
     with manager._lock:
-        manager._jobs[job_id] = succeeded
+        manager._jobs[job_id] = record
         manager._cancel_events[job_id] = threading.Event()
-    result = manager._maybe_fail_stale(stale_running, True)
-    assert result.status == JobStatus.succeeded
-    assert manager._jobs[job_id].status == JobStatus.succeeded
-    assert f"{prefix}/status.json" not in gcs.objects
-
-
-def test_maybe_fail_stale_fails_when_current_is_still_stale() -> None:
-    """Queued/running jobs that are still stale become failed and are persisted."""
-    manager, gcs = job_manager(instant_synth)
-    job_id = "stale-mem"
-    prefix = manager.settings.job_prefix_uri(job_id)
-    stale = JobRecord(
-        job_id=job_id,
-        status=JobStatus.queued,
-        audio_uri=f"{prefix}/audio.wav",
-        status_uri=f"{prefix}/status.json",
-        updated_at=utc_now() - timedelta(hours=2),
-    )
-    with manager._lock:
-        manager._jobs[job_id] = stale
-        manager._cancel_events[job_id] = threading.Event()
-    result = manager._maybe_fail_stale(stale, True)
-    assert result.status == JobStatus.failed
-    assert manager._jobs[job_id].status == JobStatus.failed
-    stored = json.loads(gcs.objects[f"{prefix}/status.json"].decode("utf-8"))
-    assert stored["status"] == "failed"
+    result = manager._transition(job_id, JobStatus.succeeded)
+    assert result.status == JobStatus.cancelled
 
 
 async def test_status_and_cancel_stay_responsive_when_worker_pool_is_busy() -> None:
@@ -186,7 +139,7 @@ async def test_status_and_cancel_stay_responsive_when_worker_pool_is_busy() -> N
     record = JobRecord(
         job_id=job_id,
         status=JobStatus.queued,
-        audio_uri=f"{prefix}/audio.wav",
+        audio_uri=f"{prefix}/output/audio.wav",
         status_uri=f"{prefix}/status.json",
         updated_at=utc_now(),
     )

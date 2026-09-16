@@ -20,9 +20,13 @@ from dotenv import load_dotenv
 from google.cloud import storage  # type: ignore[attr-defined]
 
 from tts_audio_conversation.logic.auth import get_credentials_and_project
+from tts_audio_conversation.logic.service import (
+    AudioConversationService,
+    create_audio_conversation_service,
+)
 from tts_audio_conversation.logic.settings import Settings
 from tts_audio_conversation.logic.storage import delete_file
-from tts_audio_conversation.mcp.jobs import JobManager, JobStatus
+from tts_audio_conversation.mcp.jobs import JobStatus
 from tts_audio_conversation.mcp.server import MCP_PATH, create_server
 
 load_dotenv()
@@ -92,9 +96,9 @@ def tool_data(result: Any) -> dict[str, Any]:
 
 @dataclass
 class LiveMcp:
-    """Running MCP HTTP server plus the in-process job manager."""
+    """Running MCP HTTP server plus the in-process facade."""
 
-    manager: JobManager
+    service: AudioConversationService
     url: str
     gcs_client: storage.Client
     bucket: str
@@ -118,8 +122,8 @@ async def live_mcp_http(
         audio_conversation_max_concurrent_jobs=max_concurrent_jobs,
         otel_traces_exporter="none",
     )
-    manager = JobManager(settings)
-    mcp = create_server(manager)
+    service = create_audio_conversation_service(settings, credentials, resolved_proj)
+    mcp = create_server(service)
     port = free_port()
     app = mcp.http_app(path=MCP_PATH, transport="http", host_origin_protection=False)
     config = uvicorn.Config(
@@ -141,7 +145,7 @@ async def live_mcp_http(
                 raise AssertionError("MCP HTTP server did not start within 10s")
             await asyncio.sleep(0.05)
         yield LiveMcp(
-            manager=manager,
+            service=service,
             url=f"http://127.0.0.1:{port}{MCP_PATH}",
             gcs_client=gcs_client,
             bucket=bucket,
@@ -153,8 +157,8 @@ async def live_mcp_http(
             await asyncio.wait_for(serve_task, timeout=15)
         except (TimeoutError, asyncio.CancelledError):
             serve_task.cancel()
-        manager._executor.shutdown(wait=False)
-        manager._control_executor.shutdown(wait=False)
+        service._jobs._executor.shutdown(wait=False)
+        service._jobs._control_executor.shutdown(wait=False)
 
 
 def assert_mono_wav(path: Path, *, min_duration_secs: float | None = None) -> float:
@@ -193,3 +197,11 @@ async def poll_until_terminal(
             return status
         await asyncio.sleep(interval)
     raise AssertionError(f"job {job_id} did not finish; last={status}")
+
+
+async def upload_and_start(client: Any, script_payload: str) -> dict[str, Any]:
+    """Upload inline script then start_conversation; return start tool data."""
+    uploaded = tool_data(await client.call_tool("upload_script", {"script": script_payload}))
+    return tool_data(
+        await client.call_tool("start_conversation", {"script_uri": uploaded["script_uri"]})
+    )

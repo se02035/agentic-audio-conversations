@@ -10,7 +10,7 @@ The product claim is that **speech and translation processing stay in the EU**. 
 | --- | --- | --- |
 | Chirp 3 HD synthesis | `eu-texttospeech.googleapis.com` | Global or US TTS endpoints |
 | Dialogue translation | `translate-eu.googleapis.com`, location `europe-west1` | Global Translation, `us-central1` |
-| Audio at rest | GCS bucket on the EU allowlist (`EU`, `EUR4`, `europe-central2`, `europe-north1`, `europe-north2`, `europe-southwest1`, `europe-west1`, `europe-west3`, `europe-west4`, `europe-west8`, `europe-west9`, `europe-west10`, `europe-west12`) | US / ASIA / NAM dual-regions, `europe-west2` (London), `europe-west6` (Zürich), other `EUROPE-*` prefixes |
+| Audio at rest | EU-located GCS bucket you configure in GCP (library does not enforce residency on write) | Non-EU buckets (operational choice; AI RPCs still use EU endpoints) |
 
 Writes are enforced in code (`require_eu_bucket` / `require_eu_gcs_uri`) on MCP startup and CLI `synthesize --gcs-uri`. `download` only warns: reading an old non-EU object must not block recovery. Clients are always constructed with explicit project + ADC — never a bare `storage.Client()`.
 
@@ -41,7 +41,7 @@ Synthesis can take minutes. MCP tools must not block that long.
 
 This server uses **app-level jobs** (`JobManager`): `start_conversation` returns `job_id` + `gs://` URIs after `list_voices` and persisting `queued`. FastMCP native tasks are off (`tasks=False`). Inspector protocol era can stay legacy.
 
-Status lives in memory for the live process and in GCS `status.json` so polls survive a restart. There is **no TTS resume**: stale `queued`/`running` (missing heartbeat or older than 30 min) becomes `failed`. Cancel after restart only writes `cancelled` — the worker is gone.
+Status lives in memory for the live process and in GCS `status.json` so polls survive a restart. There is **no TTS resume** and **no stale auto-fail**. Orphaned `queued`/`running` rows remain until cancelled or a new job is started. Cancel after restart only writes `cancelled` — the worker is gone.
 
 Audio is never streamed back through MCP. Clients download the WAV with their own GCS credentials. That keeps the anonymous localhost server from becoming a file proxy and keeps the large blob on the EU bucket.
 

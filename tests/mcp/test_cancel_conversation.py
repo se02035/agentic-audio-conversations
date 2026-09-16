@@ -13,14 +13,14 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-from tests.mcp.helpers import instant_synth, mcp_app, tool_data, write_fake_wav
+from tests.mcp.helpers import instant_synth, mcp_app, tool_data, upload_and_start, write_fake_wav
 from tts_audio_conversation.logic.exceptions import SynthesisCancelled
 from tts_audio_conversation.mcp.jobs import JobStatus
 
 
 async def test_cancel_conversation_unknown_job_id() -> None:
     """Unknown ids return a not-found tool error."""
-    mcp, _manager, _gcs = mcp_app(instant_synth)
+    mcp, _service, _gcs = mcp_app(instant_synth)
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match="Unknown job_id"):
             await client.call_tool("cancel_conversation", {"job_id": "missing"})
@@ -28,11 +28,9 @@ async def test_cancel_conversation_unknown_job_id() -> None:
 
 async def test_cancel_conversation_is_noop_when_already_succeeded(sample_script_yaml: str) -> None:
     """Cancel after success leaves the job succeeded."""
-    mcp, _manager, _gcs = mcp_app(instant_synth)
+    mcp, _service, _gcs = mcp_app(instant_synth)
     async with Client(mcp) as client:
-        started = tool_data(
-            await client.call_tool("start_conversation", {"script": sample_script_yaml})
-        )
+        started = await upload_and_start(client, sample_script_yaml)
         deadline = time.monotonic() + 5
         status = started
         while time.monotonic() < deadline:
@@ -68,11 +66,10 @@ async def test_cancel_conversation_stops_further_batches(sample_script_yaml: str
             time.sleep(0.12)
         return write_fake_wav(output_path)
 
-    mcp, manager, gcs = mcp_app(batched_synth)
+    mcp, service, gcs = mcp_app(batched_synth)
+    manager = service._jobs
     async with Client(mcp) as client:
-        started = tool_data(
-            await client.call_tool("start_conversation", {"script": sample_script_yaml})
-        )
+        started = await upload_and_start(client, sample_script_yaml)
         worker = manager._tasks[started["job_id"]]
         assert await asyncio.to_thread(first_batch.wait, 2)
         t0 = time.perf_counter()
@@ -98,11 +95,10 @@ async def test_cancel_conversation_gcs_only_job_does_not_start_worker(
     sample_script_yaml: str,
 ) -> None:
     """After restart, cancel writes cancelled to GCS and does not synthesize."""
-    mcp, manager, gcs = mcp_app(instant_synth)
+    mcp, service, gcs = mcp_app(instant_synth)
+    manager = service._jobs
     async with Client(mcp) as client:
-        started = tool_data(
-            await client.call_tool("start_conversation", {"script": sample_script_yaml})
-        )
+        started = await upload_and_start(client, sample_script_yaml)
         job_id = started["job_id"]
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:

@@ -24,4 +24,8 @@ jobs:
       - name: Mypy
         run: uv run mypy src tests
       - name: Unit tests
-        run: uv run pytest -m unit
+        run: >-
+          uv run pytest -m unit
+          --cov=src/tts_audio_conversation
+          --cov-report=term-missing:skip-covered
+          --cov-fail-under=85

@@ -35,7 +35,7 @@ def test_preflight_voices_does_not_synthesize(script: ConversationScript) -> Non
 
 
 def test_run_happy_path_upload_order(script: ConversationScript, tmp_path: Path) -> None:
-    """run asserts voices, synthesizes, then uploads."""
+    """Run asserts voices, synthesizes, then uploads."""
     tts = MagicMock()
     storage = MagicMock()
     voices = MagicMock(spec=VoiceCatalogService)

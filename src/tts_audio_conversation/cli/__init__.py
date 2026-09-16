@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -9,29 +10,26 @@ from pathlib import Path
 
 import click
 from dotenv import load_dotenv
-from google.cloud import storage  # type: ignore[attr-defined]
 from rich.console import Console
 from rich.table import Table
 
-from tts_audio_conversation.logic.auth import get_credentials_and_project
-from tts_audio_conversation.logic.client import (
-    EU_TTS_ENDPOINT,
-    assert_voices_in_catalog,
-    eu_tts_client,
-    list_chirp3_voices,
-    synthesize_script,
+from tts_audio_conversation.logic.jobs.models import TERMINAL_STATUSES, JobStatus
+from tts_audio_conversation.logic.service import (
+    AudioConversationService,
+    create_audio_conversation_service_from_adc,
 )
-from tts_audio_conversation.logic.exceptions import VoiceCatalogError
-from tts_audio_conversation.logic.models import ConversationScript
 from tts_audio_conversation.logic.settings import Settings
-from tts_audio_conversation.logic.storage import download_file
 from tts_audio_conversation.logic.telemetry import setup_telemetry
 from tts_audio_conversation.logic.template import create_script_template
-from tts_audio_conversation.logic.translator import ConversationTranslator, remap_script_voices
 
 load_dotenv()
 
 console = Console()
+
+
+def _service(project: str | None = None) -> AudioConversationService:
+    """Build the library facade from ADC / ``--project``."""
+    return create_audio_conversation_service_from_adc(Settings(), project=project)
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -92,58 +90,55 @@ def template_command(
         click.echo(serialized)
 
 
-@main.command(name="validate")
+@main.command(name="upload")
 @click.option(
     "--script",
     "-s",
     required=True,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="YAML or JSON dialogue script.",
+    help="Local YAML or JSON dialogue script.",
 )
-def validate_command(script: Path) -> None:
-    """Check script schema, speaker aliases, and size metrics."""
-    max_bytes = Settings().audio_conversation_max_script_bytes
-    size = script.stat().st_size
-    if size > max_bytes:
-        console.print(
-            f"[bold red]Script validation failed:[/bold red] "
-            f"Script file is {size} bytes; max is {max_bytes} "
-            f"(AUDIO_CONVERSATION_MAX_SCRIPT_BYTES)."
-        )
-        sys.exit(1)
+@click.option(
+    "--project",
+    "-p",
+    help="GCP project ID (falls back to GOOGLE_CLOUD_PROJECT or ADC).",
+)
+def upload_command(script: Path, project: str | None) -> None:
+    """Upload a local script to staging GCS and print ``script_uri``."""
     try:
-        podcast_script = ConversationScript.from_path(script)
+        result = _service(project).upload_script(script)
     except Exception as exc:
-        console.print(f"[bold red]Script validation failed:[/bold red] {exc}")
+        console.print(f"[bold red]Upload failed:[/bold red] {exc}")
         sys.exit(1)
+    console.print(f"[bold green]Uploaded[/bold green] [cyan]{result.script_uri}[/cyan]")
+    console.print(f"  • script_id: {result.script_id}")
 
-    chars = podcast_script.total_character_count
-    est_duration_min = round(chars / 750, 1)
-    console.print(f"[bold green]Script is valid[/bold green] ([cyan]{script}[/cyan])")
-    console.print(f"  • Title: [bold]{podcast_script.metadata.title}[/bold]")
-    console.print(f"  • Language: [yellow]{podcast_script.metadata.language_code}[/yellow]")
-    console.print(
-        f"  • Audio Encoding: [magenta]{podcast_script.metadata.audio_encoding.value}[/magenta]"
-    )
-    console.print(
-        f"  • Speakers ({len(podcast_script.voices)}): {', '.join(podcast_script.voices)}"
-    )
-    console.print(f"  • Dialogue Turns: {podcast_script.turn_count}")
-    console.print(f"  • Total Characters: {chars}")
+
+@main.command(name="validate")
+@click.option(
+    "--script-uri",
+    required=True,
+    help="gs:// URI from upload.",
+)
+@click.option(
+    "--project",
+    "-p",
+    help="GCP project ID (falls back to GOOGLE_CLOUD_PROJECT or ADC).",
+)
+def validate_command(script_uri: str, project: str | None) -> None:
+    """Validate a script stored at a ``gs://`` URI."""
+    result = _service(project).validate_script(script_uri)
+    if not result.valid:
+        console.print(f"[bold red]Script validation failed:[/bold red] {result.error}")
+        sys.exit(1)
+    est_duration_min = round(result.total_characters / 750, 1)
+    console.print(f"[bold green]Script is valid[/bold green] ([cyan]{result.script_uri}[/cyan])")
+    console.print(f"  • Title: [bold]{result.title}[/bold]")
+    console.print(f"  • Language: [yellow]{result.language_code}[/yellow]")
+    console.print(f"  • Speakers ({len(result.speakers)}): {', '.join(result.speakers)}")
+    console.print(f"  • Dialogue Turns: {result.turn_count}")
+    console.print(f"  • Total Characters: {result.total_characters}")
     console.print(f"  • Estimated Spoken Duration: ~{est_duration_min} minutes")
-    if podcast_script.metadata.audio_encoding.value != "LINEAR16":
-        console.print(
-            "[yellow]Note:[/yellow] synthesis always writes LINEAR16 WAV "
-            f"(script declares {podcast_script.metadata.audio_encoding.value})."
-        )
-    long_turns = [
-        i for i, turn in enumerate(podcast_script.turns, start=1) if len(turn.text) > 1500
-    ]
-    if long_turns:
-        console.print(
-            f"[yellow]Note:[/yellow] turn(s) {long_turns} exceed 1500 characters "
-            "and will be split across TTS requests."
-        )
 
 
 @main.command(name="voices")
@@ -159,27 +154,23 @@ def validate_command(script: Path) -> None:
 )
 def voices_command(language: str | None, project: str | None) -> None:
     """List Chirp 3 HD voices from the EU ``list_voices`` API."""
-    credentials, _project_id = get_credentials_and_project(project)
-    client = eu_tts_client(credentials)
-    with console.status(f"[bold cyan]Listing voices via {EU_TTS_ENDPOINT}..."):
-        results = list_chirp3_voices(client, language_code=language)
+    with console.status("[bold cyan]Listing Chirp 3 HD voices (EU)..."):
+        results = _service(project).list_voices(language_code=language)
 
     table = Table(title=f"Chirp 3 HD voices (EU) — {len(results)} found")
     table.add_column("Voice Name", style="cyan", no_wrap=True)
     table.add_column("Language", style="yellow")
     table.add_column("Gender", style="green")
     for voice in results:
-        table.add_row(voice["name"], voice["language_code"], voice["gender"])
+        table.add_row(voice.name, voice.language_code, voice.gender)
     console.print(table)
 
 
 @main.command(name="translate")
 @click.option(
-    "--script",
-    "-s",
+    "--script-uri",
     required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Source YAML or JSON script.",
+    help="gs:// URI from upload.",
 )
 @click.option(
     "--to",
@@ -189,79 +180,38 @@ def voices_command(language: str | None, project: str | None) -> None:
     help="Target BCP-47 language tag (e.g. de-DE).",
 )
 @click.option(
-    "--output",
-    "-o",
-    required=True,
-    type=click.Path(writable=True, path_type=Path),
-    help="Destination script path.",
-)
-@click.option(
     "--project",
     "-p",
     help="GCP project ID (falls back to GOOGLE_CLOUD_PROJECT or ADC).",
 )
 def translate_command(
-    script: Path,
+    script_uri: str,
     target_language: str,
-    output: Path,
     project: str | None,
 ) -> None:
-    """Translate turns via translate-eu and remap Chirp 3 HD voices."""
-    credentials, project_id = get_credentials_and_project(project)
-    source_script = ConversationScript.from_path(script)
-    translator = ConversationTranslator(project_id=project_id, credentials=credentials)
-    with console.status(f"[bold cyan]Translating to {target_language} via translate-eu..."):
-        translated_script = translator.translate_script(source_script, target_language)
-
-    serialized = (
-        translated_script.to_yaml()
-        if output.suffix.lower() in {".yaml", ".yml"}
-        else translated_script.to_json()
-    )
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(serialized, encoding="utf-8")
-    console.print(f"[bold green]Translated script saved to[/bold green] [cyan]{output}[/cyan]")
-
-
-def _language_matches(current: str, target: str) -> bool:
-    """Return True when ``current`` is already the translation target ``target``.
-
-    ``de-DE`` matches ``de-DE`` and ``de``; ``de`` does not match ``de-DE``.
-    """
-    current_lang = current.lower()
-    target_lang = target.lower()
-    return current_lang == target_lang or current_lang.startswith(f"{target_lang}-")
+    """Translate a GCS script via translate-eu; print ``output_uri``."""
+    try:
+        with console.status(f"[bold cyan]Translating to {target_language} via translate-eu..."):
+            result = _service(project).translate_script(script_uri, target_language)
+    except Exception as exc:
+        console.print(f"[bold red]Translate failed:[/bold red] {exc}")
+        sys.exit(1)
+    if result.skipped:
+        console.print(f"[dim]Already in {result.language_code}; skipped translation.[/dim]")
+    console.print(f"[bold green]output_uri[/bold green] [cyan]{result.output_uri}[/cyan]")
 
 
 @main.command(name="synthesize")
 @click.option(
-    "--script",
-    "-s",
+    "--script-uri",
     required=True,
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="YAML or JSON dialogue script.",
+    help="gs:// URI of the script to synthesize.",
 )
 @click.option(
     "--output",
     "-o",
-    required=True,
     type=click.Path(writable=True, path_type=Path),
-    help="Local WAV path for the stitched LINEAR16 audio.",
-)
-@click.option(
-    "--gcs-uri",
-    "-g",
-    help="Optional GCS upload URI, e.g. gs://my-eu-bucket/conversation/episode.wav",
-)
-@click.option(
-    "--translate-to",
-    "-t",
-    help="Optional translation to a target language before synthesis.",
-)
-@click.option(
-    "--language",
-    "-l",
-    help="Optional override for the script language code.",
+    help="Optional local WAV download path when the job succeeds.",
 )
 @click.option(
     "--project",
@@ -269,74 +219,62 @@ def _language_matches(current: str, target: str) -> bool:
     help="GCP project ID (falls back to GOOGLE_CLOUD_PROJECT or ADC).",
 )
 def synthesize_command(
-    script: Path,
-    output: Path,
-    gcs_uri: str | None,
-    translate_to: str | None,
-    language: str | None,
+    script_uri: str,
+    output: Path | None,
     project: str | None,
 ) -> None:
-    """Synthesize a local WAV via batched EU ``synthesize_speech``."""
-    credentials, project_id = get_credentials_and_project(project)
-    podcast_script = ConversationScript.from_path(script)
-    tts_client = eu_tts_client(credentials)
-    gcs_client = storage.Client(project=project_id, credentials=credentials) if gcs_uri else None
+    """Start a synthesis job, poll until terminal, optionally download audio."""
+    service = _service(project)
 
-    if gcs_uri:
-        assert gcs_client is not None
-
-    source_language = podcast_script.metadata.language_code
-    will_translate = False
-    if translate_to is not None:
-        will_translate = not _language_matches(source_language, translate_to)
-    if language and translate_to:
-        same_locale = _language_matches(language, translate_to) or _language_matches(
-            translate_to, language
-        )
-        if not same_locale:
-            console.print(
-                f"[bold red]--language {language} conflicts with --translate-to "
-                f"{translate_to}.[/bold red]"
-            )
+    async def _run() -> None:
+        try:
+            started = await service.create_audio(script_uri)
+        except Exception as exc:
+            console.print(f"[bold red]Start failed:[/bold red] {exc}")
             sys.exit(1)
-    if language and not will_translate:
-        podcast_script = remap_script_voices(podcast_script, language)
+        console.print(f"[bold green]Job[/bold green] {started.job_id} ({started.status})")
+        console.print(f"  • audio_uri: [cyan]{started.audio_uri}[/cyan]")
+        with console.status("[bold cyan]Waiting for synthesis..."):
+            while True:
+                record = await service.get_job(started.job_id)
+                if record.status in TERMINAL_STATUSES:
+                    break
+                await asyncio.sleep(0.5)
+        if record.status != JobStatus.succeeded:
+            console.print(f"[bold red]Job {record.status}[/bold red]: {record.error}")
+            sys.exit(1)
+        console.print("[bold green]Synthesis complete[/bold green]")
+        console.print(f"  • audio_uri: [cyan]{record.audio_uri}[/cyan]")
+        if output is not None:
+            service.download(record.audio_uri, output)
+            console.print(f"  • Local WAV: [cyan]{output}[/cyan]")
 
-    try:
-        assert_voices_in_catalog(tts_client, podcast_script)
-    except VoiceCatalogError as exc:
-        console.print(f"[bold red]{exc}[/bold red]")
-        sys.exit(1)
+    asyncio.run(_run())
 
-    if translate_to:
-        if not will_translate:
-            console.print(f"[dim]Script is already in {translate_to}; skipping translation.[/dim]")
-        else:
-            with console.status(
-                f"[bold cyan]Translating dialogue to {translate_to} (translate-eu)..."
-            ):
-                translator = ConversationTranslator(project_id=project_id, credentials=credentials)
-                podcast_script = translator.translate_script(podcast_script, translate_to)
-            try:
-                assert_voices_in_catalog(tts_client, podcast_script)
-            except VoiceCatalogError as exc:
-                console.print(f"[bold red]{exc}[/bold red]")
-                sys.exit(1)
 
-    with console.status(f"[bold cyan]Synthesizing via {EU_TTS_ENDPOINT}..."):
-        dest = synthesize_script(
-            tts_client,
-            podcast_script,
-            output,
-            output_gcs_uri=gcs_uri,
-            gcs_client=gcs_client,
-        )
+@main.command(name="status")
+@click.option("--job-id", required=True, help="Job id from synthesize / start_conversation.")
+@click.option(
+    "--project",
+    "-p",
+    help="GCP project ID (falls back to GOOGLE_CLOUD_PROJECT or ADC).",
+)
+def status_command(job_id: str, project: str | None) -> None:
+    """Print the current status of a synthesis job."""
 
-    console.print("[bold green]Synthesis complete[/bold green]")
-    console.print(f"  • Local WAV: [cyan]{dest}[/cyan]")
-    if gcs_uri:
-        console.print(f"  • GCS: [cyan]{gcs_uri}[/cyan]")
-    console.print(f"  • Endpoint: [magenta]{EU_TTS_ENDPOINT}[/magenta]")
+    async def _run() -> None:
+        try:
+            record = await _service(project).get_job(job_id)
+        except Exception as exc:
+            console.print(f"[bold red]{exc}[/bold red]")
+            sys.exit(1)
+        console.print(f"status: [bold]{record.status}[/bold]")
+        console.print(f"  • audio_uri: [cyan]{record.audio_uri}[/cyan]")
+        console.print(f"  • script_uri: [cyan]{record.script_uri}[/cyan]")
+        if record.error:
+            console.print(f"  • error: {record.error}")
+
+    asyncio.run(_run())
 
 
 @main.command(name="download")
@@ -344,7 +282,7 @@ def synthesize_command(
     "--gcs-uri",
     "-g",
     required=True,
-    help="GCS URI, e.g. gs://my-bucket/conversation/ep1.wav",
+    help="GCS URI, e.g. gs://my-bucket/conversation/jobs/.../output/audio.wav",
 )
 @click.option(
     "--output",
@@ -363,13 +301,11 @@ def download_command(
     output: Path,
     project: str | None,
 ) -> None:
-    """Download a GCS object with the official Storage client."""
-    credentials, project_id = get_credentials_and_project(project)
-    gcs_client = storage.Client(project=project_id, credentials=credentials)
+    """Download a GCS object via the library facade."""
     try:
         with console.status(f"[bold cyan]Downloading {gcs_uri} to {output}..."):
-            download_file(gcs_client, gcs_uri, output)
+            result = _service(project).download(gcs_uri, output)
     except Exception as exc:
         console.print(f"[bold red]Download failed:[/bold red] {exc}")
         sys.exit(1)
-    console.print(f"[bold green]Downloaded to[/bold green] [cyan]{output}[/cyan]")
+    console.print(f"[bold green]Downloaded to[/bold green] [cyan]{result.local_path}[/cyan]")

@@ -8,20 +8,20 @@ from typing import Any
 
 from fastmcp import Client
 
-from tests.mcp.helpers import instant_synth, mcp_app, tool_data
+from tests.mcp.helpers import instant_synth, mcp_app, upload_and_start
 from tts_audio_conversation.mcp.jobs import JobStatus
 
 
 async def test_succeeded_job_writes_audio_and_status_to_gcs(sample_script_yaml: str) -> None:
     """After success, FakeGcs holds audio.wav and status.json at the returned URIs."""
-    mcp, _manager, gcs = mcp_app(instant_synth)
+    mcp, _service, gcs = mcp_app(instant_synth)
     async with Client(mcp) as client:
-        started = tool_data(
-            await client.call_tool("start_conversation", {"script": sample_script_yaml})
-        )
+        started = await upload_and_start(client, sample_script_yaml)
         deadline = time.monotonic() + 5
         status: dict[str, Any] | None = None
         while time.monotonic() < deadline:
+            from tests.mcp.helpers import tool_data
+
             status = tool_data(
                 await client.call_tool("get_conversation_status", {"job_id": started["job_id"]})
             )

@@ -50,9 +50,8 @@ class ConversationTranslator:
             credentials: Application Default Credentials.
         """
         self.project_id = project_id
-        self.credentials = credentials
         self.client = translate_v3.TranslationServiceClient(
-            credentials=self.credentials,
+            credentials=credentials,
             client_options=ClientOptions(api_endpoint=EU_TRANSLATE_ENDPOINT),
         )
 

@@ -18,6 +18,7 @@ from tests.integration.mcp_live import (
     delete_gcs_blob,
     live_mcp_http,
     tool_data,
+    upload_and_start,
 )
 from tts_audio_conversation.logic.models import (
     ConversationMetadata,
@@ -62,12 +63,20 @@ async def test_live_mcp_flow_start_status_gcs_download(tmp_path: Path) -> None:
                 assert "start_conversation" in tools
                 assert "get_conversation_status" in tools
 
-                valid = tool_data(await client.call_tool("validate_script", {"script": payload}))
+                uploaded = tool_data(await client.call_tool("upload_script", {"script": payload}))
+                valid = tool_data(
+                    await client.call_tool(
+                        "validate_script", {"script_uri": uploaded["script_uri"]}
+                    )
+                )
                 assert valid["valid"] is True
 
                 t0 = time.perf_counter()
                 started = tool_data(
-                    await client.call_tool("start_conversation", {"script": payload})
+                    await client.call_tool(
+                        "start_conversation",
+                        {"script_uri": uploaded["script_uri"]},
+                    )
                 )
                 elapsed = time.perf_counter() - t0
                 assert elapsed < START_DEADLINE_SEC, (
@@ -77,7 +86,8 @@ async def test_live_mcp_flow_start_status_gcs_download(tmp_path: Path) -> None:
                 assert started["status"] in {JobStatus.queued, JobStatus.running}
                 uris.extend([started["audio_uri"], started["status_uri"]])
                 assert started["audio_uri"].startswith(f"gs://{live.bucket}/{prefix}/")
-                assert started["audio_uri"].endswith("/audio.wav")
+                assert started["audio_uri"].endswith("/output/audio.wav")
+                assert "/jobs/" in started["audio_uri"]
                 assert started["status_uri"].endswith("/status.json")
 
                 seen: set[str] = {started["status"]}
@@ -134,18 +144,14 @@ async def test_live_mcp_two_concurrent_jobs_status_and_download(tmp_path: Path) 
         try:
             async with Client(live.url) as client:
                 t0 = time.perf_counter()
-                first = tool_data(
-                    await client.call_tool("start_conversation", {"script": script_a})
-                )
+                first = await upload_and_start(client, script_a)
                 first_elapsed = time.perf_counter() - t0
                 assert first_elapsed < START_DEADLINE_SEC, (
                     f"first start_conversation blocked for {first_elapsed:.2f}s; "
                     f"expected < {START_DEADLINE_SEC}s"
                 )
                 t1 = time.perf_counter()
-                second = tool_data(
-                    await client.call_tool("start_conversation", {"script": script_b})
-                )
+                second = await upload_and_start(client, script_b)
                 second_elapsed = time.perf_counter() - t1
                 assert second_elapsed < START_DEADLINE_SEC, (
                     f"second start_conversation blocked for {second_elapsed:.2f}s; "
@@ -162,7 +168,8 @@ async def test_live_mcp_two_concurrent_jobs_status_and_download(tmp_path: Path) 
                     ]
                 )
 
-                live_tasks = [task for task in live.manager._tasks.values() if not task.done()]
+                jobs = live.service._jobs
+                live_tasks = [task for task in jobs._tasks.values() if not task.done()]
                 assert len(live_tasks) == 2, "MCP should schedule one asyncio.Task per job"
 
                 saw_both_active = False

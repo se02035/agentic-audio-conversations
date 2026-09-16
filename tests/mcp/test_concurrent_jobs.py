@@ -10,7 +10,7 @@ from typing import Any
 
 from fastmcp import Client
 
-from tests.mcp.helpers import mcp_app, mcp_settings, tool_data, write_fake_wav
+from tests.mcp.helpers import mcp_app, mcp_settings, tool_data, upload_and_start, write_fake_wav
 from tts_audio_conversation.mcp.jobs import JobStatus
 
 
@@ -40,15 +40,12 @@ async def test_two_jobs_run_as_separate_asyncio_tasks_with_independent_status(
             in_flight -= 1
         return write_fake_wav(output_path)
 
-    mcp, manager, gcs = mcp_app(overlapping_synth)
+    mcp, service, gcs = mcp_app(overlapping_synth)
+    manager = service._jobs
     async with Client(mcp) as client:
         t0 = time.perf_counter()
-        first = tool_data(
-            await client.call_tool("start_conversation", {"script": sample_script_yaml})
-        )
-        second = tool_data(
-            await client.call_tool("start_conversation", {"script": sample_script_yaml})
-        )
+        first = await upload_and_start(client, sample_script_yaml)
+        second = await upload_and_start(client, sample_script_yaml)
         elapsed = time.perf_counter() - t0
         assert elapsed < 0.4
         assert first["job_id"] != second["job_id"]
@@ -93,19 +90,16 @@ async def test_third_job_queued_when_semaphore_full(sample_script_yaml: str) -> 
         assert release.wait(timeout=5)
         return write_fake_wav(output_path)
 
-    mcp, manager, _gcs = mcp_app(
+    mcp, service, _gcs = mcp_app(
         gated_synth,
         settings=mcp_settings(audio_conversation_max_concurrent_jobs=1),
     )
+    manager = service._jobs
     async with Client(mcp) as client:
-        first = tool_data(
-            await client.call_tool("start_conversation", {"script": sample_script_yaml})
-        )
+        first = await upload_and_start(client, sample_script_yaml)
         assert await asyncio.to_thread(entered.wait, 2)
         t0 = time.perf_counter()
-        second = tool_data(
-            await client.call_tool("start_conversation", {"script": sample_script_yaml})
-        )
+        second = await upload_and_start(client, sample_script_yaml)
         assert time.perf_counter() - t0 < 0.4
         status = tool_data(
             await client.call_tool("get_conversation_status", {"job_id": second["job_id"]})

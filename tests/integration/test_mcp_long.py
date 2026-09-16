@@ -70,18 +70,24 @@ async def test_live_mcp_long_form_unicorn_and_german_ai(tmp_path: Path) -> None:
     async with live_mcp_http(prefix, max_concurrent_jobs=2) as live:
         try:
             async with Client(live.url) as client:
+                up_u = tool_data(
+                    await client.call_tool("upload_script", {"script": unicorn.to_yaml()})
+                )
+                up_g = tool_data(
+                    await client.call_tool("upload_script", {"script": german.to_yaml()})
+                )
                 valid_u = tool_data(
-                    await client.call_tool("validate_script", {"script": unicorn.to_yaml()})
+                    await client.call_tool("validate_script", {"script_uri": up_u["script_uri"]})
                 )
                 valid_g = tool_data(
-                    await client.call_tool("validate_script", {"script": german.to_yaml()})
+                    await client.call_tool("validate_script", {"script_uri": up_g["script_uri"]})
                 )
                 assert valid_u["valid"] is True
                 assert valid_g["valid"] is True
 
                 t0 = time.perf_counter()
                 job_u = tool_data(
-                    await client.call_tool("start_conversation", {"script": unicorn.to_yaml()})
+                    await client.call_tool("start_conversation", {"script_uri": up_u["script_uri"]})
                 )
                 unicorn_elapsed = time.perf_counter() - t0
                 assert unicorn_elapsed < START_DEADLINE_SEC, (
@@ -90,7 +96,7 @@ async def test_live_mcp_long_form_unicorn_and_german_ai(tmp_path: Path) -> None:
                 )
                 t1 = time.perf_counter()
                 job_g = tool_data(
-                    await client.call_tool("start_conversation", {"script": german.to_yaml()})
+                    await client.call_tool("start_conversation", {"script_uri": up_g["script_uri"]})
                 )
                 german_elapsed = time.perf_counter() - t1
                 assert german_elapsed < START_DEADLINE_SEC, (
@@ -109,7 +115,8 @@ async def test_live_mcp_long_form_unicorn_and_german_ai(tmp_path: Path) -> None:
                     ]
                 )
 
-                live_tasks = [task for task in live.manager._tasks.values() if not task.done()]
+                jobs = live.service._jobs
+                live_tasks = [task for task in jobs._tasks.values() if not task.done()]
                 assert len(live_tasks) == 2
 
                 saw_both_active = False
