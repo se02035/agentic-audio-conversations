@@ -4,11 +4,11 @@ from __future__ import annotations
 
 
 class SynthesisCancelled(Exception):
-    """Raised when a podcast job is cancelled between Cloud TTS batches."""
+    """Raised when a conversation job is cancelled between Cloud TTS batches."""
 
 
 class JobNotFound(LookupError):
-    """Raised when a podcast job_id is unknown to this process and GCS."""
+    """Raised when a conversation job_id is unknown to this process and GCS."""
 
     def __init__(self, job_id: str) -> None:
         """Record the missing job identifier."""
@@ -18,10 +18,6 @@ class JobNotFound(LookupError):
 
 class ScriptPayloadError(ValueError):
     """Raised when a YAML/JSON script payload is missing, oversized, or invalid."""
-
-
-class GcsResidencyError(ValueError):
-    """Raised when a GCS bucket is not in an EU location."""
 
 
 class VoiceCatalogError(ValueError):

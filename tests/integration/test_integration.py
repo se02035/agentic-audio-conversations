@@ -11,15 +11,15 @@ import pytest
 from dotenv import load_dotenv
 from google.cloud import storage  # type: ignore[attr-defined]
 
-from tts_podcast_creator.logic.auth import get_credentials_and_project
-from tts_podcast_creator.logic.client import eu_tts_client, synthesize_script
-from tts_podcast_creator.logic.models import (
+from tts_audio_conversation.logic.auth import get_credentials_and_project
+from tts_audio_conversation.logic.client import eu_tts_client, synthesize_script
+from tts_audio_conversation.logic.models import (
+    ConversationMetadata,
+    ConversationScript,
     DialogueTurn,
-    PodcastMetadata,
-    PodcastScript,
     VoiceConfig,
 )
-from tts_podcast_creator.logic.storage import delete_file, download_file
+from tts_audio_conversation.logic.storage import delete_file, download_file
 
 load_dotenv()
 
@@ -36,10 +36,11 @@ def _delete_gcs_blob(gcs_client: storage.Client, gcs_uri: str) -> None:
 
 def _require_live_env() -> tuple[str, str]:
     project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
-    gcs_uri = os.environ.get("PODCAST_TEST_GCS_URI")
+    gcs_uri = os.environ.get("AUDIO_CONVERSATION_TEST_GCS_URI")
     if not project_id or not gcs_uri:
         pytest.skip(
-            "GOOGLE_CLOUD_PROJECT and PODCAST_TEST_GCS_URI must be set for integration tests"
+            "GOOGLE_CLOUD_PROJECT and AUDIO_CONVERSATION_TEST_GCS_URI must be set "
+            "for integration tests"
         )
     return project_id, gcs_uri
 
@@ -52,8 +53,8 @@ def test_live_cloud_tts_synthesis(tmp_path: Path) -> None:
     tts_client = eu_tts_client(credentials)
     gcs_client = storage.Client(project=resolved_proj, credentials=credentials)
 
-    script = PodcastScript(
-        metadata=PodcastMetadata(
+    script = ConversationScript(
+        metadata=ConversationMetadata(
             title="Integration Test Podcast",
             language_code="en-US",
         ),
@@ -98,7 +99,7 @@ def test_long_running_unicorn_fairytale_podcast(tmp_path: Path) -> None:
     template_path = repo_root / "templates" / "unicorn_fairytale.yaml"
     assert template_path.exists(), f"Static template not found at {template_path}"
 
-    script = PodcastScript.from_path(template_path)
+    script = ConversationScript.from_path(template_path)
     assert len(script.voices) == 1, f"Expected 1 speaker, found {len(script.voices)}"
     assert "narrator" in script.voices
     total_words = sum(len(turn.text.split()) for turn in script.turns)
@@ -149,7 +150,7 @@ def test_live_two_speaker_german_ai_podcast(tmp_path: Path) -> None:
     template_path = repo_root / "templates" / "ai_software_engineering_de.yaml"
     assert template_path.exists(), f"Static template not found at {template_path}"
 
-    script = PodcastScript.from_path(template_path)
+    script = ConversationScript.from_path(template_path)
     assert len(script.voices) == 2, f"Expected 2 speakers, found {len(script.voices)}"
     assert "moderatorin" in script.voices
     assert "experte" in script.voices

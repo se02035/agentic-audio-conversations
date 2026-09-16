@@ -19,19 +19,19 @@ from tests.integration.mcp_live import (
     tool_data,
     wav_sample_rate,
 )
-from tts_podcast_creator.logic.models import PodcastScript
-from tts_podcast_creator.logic.storage import download_file
-from tts_podcast_creator.mcp.jobs import JobStatus
+from tts_audio_conversation.logic.models import ConversationScript
+from tts_audio_conversation.logic.storage import download_file
+from tts_audio_conversation.mcp.jobs import JobStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _UNICORN = _REPO_ROOT / "templates" / "unicorn_fairytale.yaml"
 _GERMAN_AI = _REPO_ROOT / "templates" / "ai_software_engineering_de.yaml"
 
 
-def _load_unicorn() -> PodcastScript:
+def _load_unicorn() -> ConversationScript:
     """Load and check the single-speaker fairytale template."""
     assert _UNICORN.exists(), f"Static template not found at {_UNICORN}"
-    script = PodcastScript.from_path(_UNICORN)
+    script = ConversationScript.from_path(_UNICORN)
     assert len(script.voices) == 1, f"Expected 1 speaker, found {len(script.voices)}"
     assert "narrator" in script.voices
     total_words = sum(len(turn.text.split()) for turn in script.turns)
@@ -39,10 +39,10 @@ def _load_unicorn() -> PodcastScript:
     return script
 
 
-def _load_german_ai() -> PodcastScript:
+def _load_german_ai() -> ConversationScript:
     """Load and check the 2-speaker German AI podcast template."""
     assert _GERMAN_AI.exists(), f"Static template not found at {_GERMAN_AI}"
-    script = PodcastScript.from_path(_GERMAN_AI)
+    script = ConversationScript.from_path(_GERMAN_AI)
     assert len(script.voices) == 2, f"Expected 2 speakers, found {len(script.voices)}"
     assert "moderatorin" in script.voices
     assert "experte" in script.voices
@@ -58,13 +58,13 @@ def _load_german_ai() -> PodcastScript:
 async def test_live_mcp_long_form_unicorn_and_german_ai(tmp_path: Path) -> None:
     """Run both ~15-minute templates concurrently through MCP start/status/GCS download.
 
-    start_podcast must return immediately for each job. Both asyncio tasks stay live,
+    start_conversation must return immediately for each job. Both asyncio tasks stay live,
     statuses are polled independently, and each downloaded WAV is longer than 300s.
     """
     unicorn = _load_unicorn()
     german = _load_german_ai()
     suffix = uuid.uuid4().hex[:8]
-    prefix = f"podcasts/live_mcp_long_{suffix}"
+    prefix = f"conversation/live_mcp_long_{suffix}"
     uris: list[str] = []
 
     async with live_mcp_http(prefix, max_concurrent_jobs=2) as live:
@@ -81,20 +81,20 @@ async def test_live_mcp_long_form_unicorn_and_german_ai(tmp_path: Path) -> None:
 
                 t0 = time.perf_counter()
                 job_u = tool_data(
-                    await client.call_tool("start_podcast", {"script": unicorn.to_yaml()})
+                    await client.call_tool("start_conversation", {"script": unicorn.to_yaml()})
                 )
                 unicorn_elapsed = time.perf_counter() - t0
                 assert unicorn_elapsed < START_DEADLINE_SEC, (
-                    f"unicorn start_podcast blocked for {unicorn_elapsed:.2f}s; "
+                    f"unicorn start_conversation blocked for {unicorn_elapsed:.2f}s; "
                     f"expected < {START_DEADLINE_SEC}s"
                 )
                 t1 = time.perf_counter()
                 job_g = tool_data(
-                    await client.call_tool("start_podcast", {"script": german.to_yaml()})
+                    await client.call_tool("start_conversation", {"script": german.to_yaml()})
                 )
                 german_elapsed = time.perf_counter() - t1
                 assert german_elapsed < START_DEADLINE_SEC, (
-                    f"German start_podcast blocked for {german_elapsed:.2f}s; "
+                    f"German start_conversation blocked for {german_elapsed:.2f}s; "
                     f"expected < {START_DEADLINE_SEC}s"
                 )
                 assert job_u["job_id"] != job_g["job_id"]
@@ -118,10 +118,14 @@ async def test_live_mcp_long_form_unicorn_and_german_ai(tmp_path: Path) -> None:
                 status_g = job_g
                 while time.monotonic() < deadline:
                     status_u = tool_data(
-                        await client.call_tool("get_podcast_status", {"job_id": job_u["job_id"]})
+                        await client.call_tool(
+                            "get_conversation_status", {"job_id": job_u["job_id"]}
+                        )
                     )
                     status_g = tool_data(
-                        await client.call_tool("get_podcast_status", {"job_id": job_g["job_id"]})
+                        await client.call_tool(
+                            "get_conversation_status", {"job_id": job_g["job_id"]}
+                        )
                     )
                     active = {JobStatus.queued, JobStatus.running}
                     if status_u["status"] in active and status_g["status"] in active:

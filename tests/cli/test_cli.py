@@ -8,8 +8,8 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
-from tts_podcast_creator.cli import main
-from tts_podcast_creator.logic.models import PodcastScript
+from tts_audio_conversation.cli import main
+from tts_audio_conversation.logic.models import ConversationScript
 
 
 class TestCLI:
@@ -63,9 +63,9 @@ class TestCLI:
         result = runner.invoke(main, ["validate", "-s", str(script_file)])
         assert result.exit_code != 0
 
-    @patch("tts_podcast_creator.cli.list_chirp3_voices")
-    @patch("tts_podcast_creator.cli.eu_tts_client")
-    @patch("tts_podcast_creator.cli.get_credentials_and_project")
+    @patch("tts_audio_conversation.cli.list_chirp3_voices")
+    @patch("tts_audio_conversation.cli.eu_tts_client")
+    @patch("tts_audio_conversation.cli.get_credentials_and_project")
     def test_voices_command(
         self,
         mock_auth: MagicMock,
@@ -87,8 +87,8 @@ class TestCLI:
         assert "Chirp3-HD" in result.output
         assert "Fenrir" in result.output
 
-    @patch("tts_podcast_creator.cli.get_credentials_and_project")
-    @patch("tts_podcast_creator.cli.PodcastTranslator")
+    @patch("tts_audio_conversation.cli.get_credentials_and_project")
+    @patch("tts_audio_conversation.cli.ConversationTranslator")
     def test_translate_command(
         self,
         mock_translator_cls: MagicMock,
@@ -100,7 +100,7 @@ class TestCLI:
         """Translate command writes a translated script."""
         mock_auth.return_value = (MagicMock(), "test-proj")
         mock_translator = MagicMock()
-        mock_translator.translate_script.return_value = PodcastScript.model_validate(
+        mock_translator.translate_script.return_value = ConversationScript.model_validate(
             sample_german_script_dict
         )
         mock_translator_cls.return_value = mock_translator
@@ -128,11 +128,11 @@ class TestCLI:
         assert out_file.exists()
         assert "de-DE" in out_file.read_text()
 
-    @patch("tts_podcast_creator.cli.assert_voices_in_catalog")
-    @patch("tts_podcast_creator.cli.storage.Client")
-    @patch("tts_podcast_creator.cli.synthesize_script")
-    @patch("tts_podcast_creator.cli.eu_tts_client")
-    @patch("tts_podcast_creator.cli.get_credentials_and_project")
+    @patch("tts_audio_conversation.cli.assert_voices_in_catalog")
+    @patch("tts_audio_conversation.cli.storage.Client")
+    @patch("tts_audio_conversation.cli.synthesize_script")
+    @patch("tts_audio_conversation.cli.eu_tts_client")
+    @patch("tts_audio_conversation.cli.get_credentials_and_project")
     def test_synthesize_command_local(
         self,
         mock_auth: MagicMock,
@@ -165,20 +165,20 @@ class TestCLI:
     def test_validate_command_rejects_oversize(
         self, tmp_path: Path, sample_script_yaml: str
     ) -> None:
-        """Files larger than PODCAST_MAX_SCRIPT_BYTES are rejected before parse."""
+        """Files larger than AUDIO_CONVERSATION_MAX_SCRIPT_BYTES are rejected before parse."""
         script_file = tmp_path / "valid.yaml"
         script_file.write_text(sample_script_yaml)
         runner = CliRunner()
-        with patch("tts_podcast_creator.cli.Settings") as mock_settings:
-            mock_settings.return_value.podcast_max_script_bytes = 32
+        with patch("tts_audio_conversation.cli.Settings") as mock_settings:
+            mock_settings.return_value.audio_conversation_max_script_bytes = 32
             result = runner.invoke(main, ["validate", "-s", str(script_file)])
         assert result.exit_code != 0
         assert "bytes" in result.output.lower()
 
-    @patch("tts_podcast_creator.cli.assert_voices_in_catalog")
-    @patch("tts_podcast_creator.cli.synthesize_script")
-    @patch("tts_podcast_creator.cli.eu_tts_client")
-    @patch("tts_podcast_creator.cli.get_credentials_and_project")
+    @patch("tts_audio_conversation.cli.assert_voices_in_catalog")
+    @patch("tts_audio_conversation.cli.synthesize_script")
+    @patch("tts_audio_conversation.cli.eu_tts_client")
+    @patch("tts_audio_conversation.cli.get_credentials_and_project")
     def test_language_override_remaps_voices_before_catalog(
         self,
         mock_auth: MagicMock,
@@ -194,14 +194,14 @@ class TestCLI:
         mock_synth.return_value = out_file
         cataloged: list[Any] = []
 
-        def capture(_client: Any, script: PodcastScript) -> None:
+        def capture(_client: Any, script: ConversationScript) -> None:
             cataloged.append(script)
 
         mock_catalog.side_effect = capture
         script_file = tmp_path / "script.yaml"
         script_file.write_text(sample_script_yaml)
         runner = CliRunner()
-        with patch("tts_podcast_creator.cli.PodcastTranslator") as mock_trans_cls:
+        with patch("tts_audio_conversation.cli.ConversationTranslator") as mock_trans_cls:
             result = runner.invoke(
                 main,
                 [
@@ -228,10 +228,10 @@ class TestCLI:
         assert submitted.metadata.language_code == "de-DE"
         assert submitted.voices["guest"].name == "de-DE-Chirp3-HD-Aoede"
 
-    @patch("tts_podcast_creator.cli.assert_voices_in_catalog")
-    @patch("tts_podcast_creator.cli.synthesize_script")
-    @patch("tts_podcast_creator.cli.eu_tts_client")
-    @patch("tts_podcast_creator.cli.get_credentials_and_project")
+    @patch("tts_audio_conversation.cli.assert_voices_in_catalog")
+    @patch("tts_audio_conversation.cli.synthesize_script")
+    @patch("tts_audio_conversation.cli.eu_tts_client")
+    @patch("tts_audio_conversation.cli.get_credentials_and_project")
     def test_matching_language_and_translate_to_still_translates(
         self,
         mock_auth: MagicMock,
@@ -246,11 +246,11 @@ class TestCLI:
         mock_auth.return_value = (MagicMock(), "test-proj")
         out_file = tmp_path / "episode.wav"
         mock_synth.return_value = out_file
-        translated = PodcastScript.model_validate(sample_german_script_dict)
+        translated = ConversationScript.model_validate(sample_german_script_dict)
         script_file = tmp_path / "script.yaml"
         script_file.write_text(sample_script_yaml)
         runner = CliRunner()
-        with patch("tts_podcast_creator.cli.PodcastTranslator") as mock_trans_cls:
+        with patch("tts_audio_conversation.cli.ConversationTranslator") as mock_trans_cls:
             mock_translator = MagicMock()
             mock_translator.translate_script.return_value = translated
             mock_trans_cls.return_value = mock_translator
@@ -279,10 +279,10 @@ class TestCLI:
         assert submitted.metadata.language_code == "de-DE"
         assert "Willkommen" in submitted.turns[0].text
 
-    @patch("tts_podcast_creator.cli.assert_voices_in_catalog")
-    @patch("tts_podcast_creator.cli.synthesize_script")
-    @patch("tts_podcast_creator.cli.eu_tts_client")
-    @patch("tts_podcast_creator.cli.get_credentials_and_project")
+    @patch("tts_audio_conversation.cli.assert_voices_in_catalog")
+    @patch("tts_audio_conversation.cli.synthesize_script")
+    @patch("tts_audio_conversation.cli.eu_tts_client")
+    @patch("tts_audio_conversation.cli.get_credentials_and_project")
     def test_conflicting_language_and_translate_to_are_rejected(
         self,
         mock_auth: MagicMock,
@@ -317,9 +317,9 @@ class TestCLI:
         mock_synth.assert_not_called()
         mock_catalog.assert_not_called()
 
-    @patch("tts_podcast_creator.cli.download_file")
-    @patch("tts_podcast_creator.cli.storage.Client")
-    @patch("tts_podcast_creator.cli.get_credentials_and_project")
+    @patch("tts_audio_conversation.cli.download_file")
+    @patch("tts_audio_conversation.cli.storage.Client")
+    @patch("tts_audio_conversation.cli.get_credentials_and_project")
     def test_download_command(
         self,
         mock_auth: MagicMock,

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from google.auth.exceptions import DefaultCredentialsError
 
-from tts_podcast_creator.logic.auth import get_credentials_and_project, resolve_project_id
+from tts_audio_conversation.logic.auth import get_credentials_and_project, resolve_project_id
 
 
 class TestAuth:
@@ -41,7 +41,7 @@ class TestAuth:
     def test_get_credentials_and_project_success(self, mock_credentials: MagicMock) -> None:
         """Single google.auth.default() call returns creds and project."""
         with patch(
-            "tts_podcast_creator.logic.auth.google.auth.default",
+            "tts_audio_conversation.logic.auth.google.auth.default",
             return_value=(mock_credentials, "adc-project"),
         ):
             with patch.dict(os.environ, {}, clear=True):
@@ -52,7 +52,7 @@ class TestAuth:
     def test_get_credentials_and_project_missing_raises(self) -> None:
         """DefaultCredentialsError when ADC is missing."""
         with patch(
-            "tts_podcast_creator.logic.auth.google.auth.default",
+            "tts_audio_conversation.logic.auth.google.auth.default",
             side_effect=DefaultCredentialsError("No credentials"),
         ):
             with pytest.raises(DefaultCredentialsError):

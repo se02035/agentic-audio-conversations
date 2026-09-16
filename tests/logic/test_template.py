@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from tts_podcast_creator.logic.template import SAMPLE_TURNS_BY_LANG, create_script_template
+from tts_audio_conversation.logic.template import SAMPLE_TURNS_BY_LANG, create_script_template
 
 
 def test_create_script_template_copies_turns() -> None:
@@ -24,7 +24,7 @@ def test_create_script_template_falls_back_to_english(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Unknown language prefixes log a fallback and reuse English sample turns."""
-    with caplog.at_level(logging.WARNING, logger="tts_podcast_creator.logic.template"):
+    with caplog.at_level(logging.WARNING, logger="tts_audio_conversation.logic.template"):
         script = create_script_template("es-ES")
     assert "falling back to English" in caplog.text
     assert "es" in caplog.text

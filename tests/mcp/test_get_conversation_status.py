@@ -1,4 +1,4 @@
-"""Unit tests for the ``get_podcast_status`` MCP tool."""
+"""Unit tests for the ``get_conversation_status`` MCP tool."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 from tests.mcp.helpers import instant_synth, mcp_app, tool_data, write_fake_wav
-from tts_podcast_creator.mcp.jobs import JobStatus
+from tts_audio_conversation.mcp.jobs import JobStatus
 
 
 async def _wait_for_status(
@@ -23,26 +23,26 @@ async def _wait_for_status(
     wanted: JobStatus,
     timeout: float = 5.0,
 ) -> dict[str, Any]:
-    """Poll get_podcast_status until ``wanted`` or raise."""
+    """Poll get_conversation_status until ``wanted`` or raise."""
     deadline = time.monotonic() + timeout
     last: dict[str, Any] | None = None
     while time.monotonic() < deadline:
-        last = tool_data(await client.call_tool("get_podcast_status", {"job_id": job_id}))
+        last = tool_data(await client.call_tool("get_conversation_status", {"job_id": job_id}))
         if last["status"] == wanted:
             return last
         await asyncio.sleep(0.05)
     raise AssertionError(f"status did not become {wanted}; last={last}")
 
 
-async def test_get_podcast_status_unknown_job_id() -> None:
+async def test_get_conversation_status_unknown_job_id() -> None:
     """Unknown ids return a not-found tool error, not a hang."""
     mcp, _manager, _gcs = mcp_app(instant_synth)
     async with Client(mcp) as client:
         with pytest.raises(ToolError, match="Unknown job_id"):
-            await client.call_tool("get_podcast_status", {"job_id": "missing"})
+            await client.call_tool("get_conversation_status", {"job_id": "missing"})
 
 
-async def test_get_podcast_status_tracks_running_progress_then_succeeded(
+async def test_get_conversation_status_tracks_running_progress_then_succeeded(
     sample_script_yaml: str,
 ) -> None:
     """Polling reports running + batch progress, then succeeded."""
@@ -61,7 +61,9 @@ async def test_get_podcast_status_tracks_running_progress_then_succeeded(
 
     mcp, _manager, _gcs = mcp_app(gated_synth)
     async with Client(mcp) as client:
-        started = tool_data(await client.call_tool("start_podcast", {"script": sample_script_yaml}))
+        started = tool_data(
+            await client.call_tool("start_conversation", {"script": sample_script_yaml})
+        )
         job_id = started["job_id"]
         assert await asyncio.to_thread(entered.wait, 2)
         running = await _wait_for_status(client, job_id, JobStatus.running)
@@ -75,26 +77,28 @@ async def test_get_podcast_status_tracks_running_progress_then_succeeded(
         assert done["audio_uri"] == started["audio_uri"]
 
 
-async def test_get_podcast_status_reads_gcs_when_job_evicted_from_memory(
+async def test_get_conversation_status_reads_gcs_when_job_evicted_from_memory(
     sample_script_yaml: str,
 ) -> None:
     """After process-local state is dropped, status.json in GCS still answers polls."""
     mcp, manager, gcs = mcp_app(instant_synth)
     async with Client(mcp) as client:
-        started = tool_data(await client.call_tool("start_podcast", {"script": sample_script_yaml}))
+        started = tool_data(
+            await client.call_tool("start_conversation", {"script": sample_script_yaml})
+        )
         job_id = started["job_id"]
         await _wait_for_status(client, job_id, JobStatus.succeeded)
         with manager._lock:
             assert job_id in manager._jobs
             del manager._jobs[job_id]
-        restored = tool_data(await client.call_tool("get_podcast_status", {"job_id": job_id}))
+        restored = tool_data(await client.call_tool("get_conversation_status", {"job_id": job_id}))
     assert restored["status"] == JobStatus.succeeded
     assert restored["job_id"] == job_id
     raw = gcs.objects[started["status_uri"]]
     assert json.loads(raw.decode("utf-8"))["status"] == JobStatus.succeeded
 
 
-async def test_get_podcast_status_fails_stale_running_without_resume() -> None:
+async def test_get_conversation_status_fails_stale_running_without_resume() -> None:
     """Missing/old heartbeat on queued/running becomes failed; no TTS worker starts."""
     from tests.mcp.helpers import job_manager
 
@@ -124,14 +128,16 @@ async def test_terminal_jobs_are_pruned_from_memory(sample_script_yaml: str) -> 
     from datetime import timedelta
 
     from tests.mcp.helpers import mcp_settings
-    from tts_podcast_creator.mcp.jobs import utc_now
+    from tts_audio_conversation.mcp.jobs import utc_now
 
     mcp, manager, _gcs = mcp_app(
         instant_synth,
-        settings=mcp_settings(podcast_job_prune_ttl_sec=60),
+        settings=mcp_settings(audio_conversation_job_prune_ttl_sec=60),
     )
     async with Client(mcp) as client:
-        started = tool_data(await client.call_tool("start_podcast", {"script": sample_script_yaml}))
+        started = tool_data(
+            await client.call_tool("start_conversation", {"script": sample_script_yaml})
+        )
         await _wait_for_status(client, started["job_id"], JobStatus.succeeded)
         job_id = started["job_id"]
         assert job_id in manager._jobs
@@ -142,6 +148,6 @@ async def test_terminal_jobs_are_pruned_from_memory(sample_script_yaml: str) -> 
             )
         manager._prune()
         assert job_id not in manager._jobs
-        restored = tool_data(await client.call_tool("get_podcast_status", {"job_id": job_id}))
+        restored = tool_data(await client.call_tool("get_conversation_status", {"job_id": job_id}))
     assert restored["status"] == JobStatus.succeeded
     assert job_id not in manager._jobs

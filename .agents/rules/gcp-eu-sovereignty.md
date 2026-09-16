@@ -6,7 +6,7 @@ description: >-
 
 # GCP EU Data Sovereignty & TTS Integration Rules
 
-When writing code, scripts, CLI commands, or tests for `tts-podcast-creator`, you must adhere to the following invariants:
+When writing code, scripts, CLI commands, or tests for `tts-audio-conversation`, you must adhere to the following invariants:
 
 ## 1. Strict EU Data Residency & Processing Endpoints
 - **Cloud Text-to-Speech**: MUST always use the European regional endpoint `eu-texttospeech.googleapis.com`. Never route through global or US endpoints.
@@ -20,13 +20,13 @@ When writing code, scripts, CLI commands, or tests for `tts-podcast-creator`, yo
 - Single-speaker scripts must include an unused Companion persona so `MultiSpeakerVoiceConfig` has ≥2 speakers.
 - Speaker aliases must be alphanumeric (`[a-zA-Z0-9]+`).
 - Batch turns at ≤1500 characters.
-- Voice names must contain `Chirp3-HD`. CLI `synthesize` and MCP `start_podcast` also call EU `list_voices` (fail fast). `validate_script` is schema-only.
+- Voice names must contain `Chirp3-HD`. CLI `synthesize` and MCP `start_conversation` also call EU `list_voices` (fail fast). `validate_script` is schema-only.
 
 ## 3. Test Lifecycle & Resource Cleanup
 - Tests that create GCS blobs must delete them in `finally` unless `KEEP_TEST_ARTIFACTS=true`.
 - Do not commit `.wav` / `.mp3` media. Live integration tests in `tests/integration/` must keep passing (library synthesis and MCP HTTP smoke).
 
 ## 4. CLI Execution
-- Executable: `tts-podcast-creator` (alias `podcast-creator`) or `python -m tts_podcast_creator.cli`.
-- MCP HTTP: `tts-podcast-mcp` or `python -m tts_podcast_creator.mcp` at `http://127.0.0.1:8000/mcp` (anonymous).
+- Executable: `tts-audio-conversation` (alias `audio-conversation`) or `python -m tts_audio_conversation.cli`.
+- MCP HTTP: `tts-audio-conversation-mcp` or `python -m tts_audio_conversation.mcp` at `http://127.0.0.1:8000/mcp` (anonymous).
 - Project flag is `--project`. Synthesize writes a local WAV (`--output`); `--gcs-uri` is optional.

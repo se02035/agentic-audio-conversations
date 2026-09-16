@@ -9,8 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from tts_podcast_creator.cli import main
-from tts_podcast_creator.logic.models import PodcastScript
+from tts_audio_conversation.cli import main
+from tts_audio_conversation.logic.models import ConversationScript
 
 
 @pytest.fixture
@@ -23,19 +23,16 @@ def cli_runner() -> CliRunner:
 def mock_auth() -> Any:
     """Mock ADC + project resolution used by the CLI."""
     with patch(
-        "tts_podcast_creator.cli.get_credentials_and_project",
+        "tts_audio_conversation.cli.get_credentials_and_project",
         return_value=(MagicMock(), "test-eu-project"),
     ):
         yield
 
 
 @pytest.fixture(autouse=True)
-def mock_voice_catalog_and_eu_writes() -> Any:
-    """Skip live list_voices and treat GCS writes as EU in CLI scenario tests."""
-    with (
-        patch("tts_podcast_creator.cli.assert_voices_in_catalog"),
-        patch("tts_podcast_creator.cli.require_eu_gcs_uri"),
-    ):
+def mock_voice_catalog() -> Any:
+    """Skip live list_voices in CLI scenario tests."""
+    with patch("tts_audio_conversation.cli.assert_voices_in_catalog"):
         yield
 
 
@@ -54,15 +51,15 @@ class TestPodcastScenarios:
         script_file = tmp_path / "dialogue_en.yaml"
         script_file.write_text(sample_script_yaml, encoding="utf-8")
         out_audio_file = tmp_path / "podcast_de.wav"
-        gcs_uri = "gs://my-eu-bucket/podcasts/german_episode.wav"
-        translated_script = PodcastScript.model_validate(sample_german_script_dict)
+        gcs_uri = "gs://my-eu-bucket/conversation/german_episode.wav"
+        translated_script = ConversationScript.model_validate(sample_german_script_dict)
 
         with (
-            patch("tts_podcast_creator.cli.PodcastTranslator") as mock_trans_cls,
-            patch("tts_podcast_creator.cli.synthesize_script") as mock_synth,
-            patch("tts_podcast_creator.cli.eu_tts_client"),
-            patch("tts_podcast_creator.cli.storage.Client") as mock_storage_cls,
-            patch("tts_podcast_creator.cli.download_file") as mock_download,
+            patch("tts_audio_conversation.cli.ConversationTranslator") as mock_trans_cls,
+            patch("tts_audio_conversation.cli.synthesize_script") as mock_synth,
+            patch("tts_audio_conversation.cli.eu_tts_client"),
+            patch("tts_audio_conversation.cli.storage.Client") as mock_storage_cls,
+            patch("tts_audio_conversation.cli.download_file") as mock_download,
         ):
             mock_translator = MagicMock()
             mock_translator.translate_script.return_value = translated_script
@@ -129,13 +126,13 @@ turns:
         script_file = tmp_path / "dialogue_de_custom.yaml"
         script_file.write_text(german_custom_yaml, encoding="utf-8")
         out_audio_file = tmp_path / "german_custom.wav"
-        gcs_uri = "gs://custom-eu-bucket/podcasts/german_custom.wav"
+        gcs_uri = "gs://custom-eu-bucket/conversation/german_custom.wav"
 
         with (
-            patch("tts_podcast_creator.cli.PodcastTranslator") as mock_trans_cls,
-            patch("tts_podcast_creator.cli.synthesize_script") as mock_synth,
-            patch("tts_podcast_creator.cli.eu_tts_client"),
-            patch("tts_podcast_creator.cli.storage.Client"),
+            patch("tts_audio_conversation.cli.ConversationTranslator") as mock_trans_cls,
+            patch("tts_audio_conversation.cli.synthesize_script") as mock_synth,
+            patch("tts_audio_conversation.cli.eu_tts_client"),
+            patch("tts_audio_conversation.cli.storage.Client"),
         ):
             mock_synth.return_value = out_audio_file
             synth_result = cli_runner.invoke(
@@ -218,8 +215,8 @@ turns:
         assert "Speakers (1): narrator" in val_result.output
 
         with (
-            patch("tts_podcast_creator.cli.synthesize_script") as mock_synth,
-            patch("tts_podcast_creator.cli.eu_tts_client"),
+            patch("tts_audio_conversation.cli.synthesize_script") as mock_synth,
+            patch("tts_audio_conversation.cli.eu_tts_client"),
         ):
             mock_synth.return_value = out_audio_file
             synth_result = cli_runner.invoke(
@@ -249,7 +246,7 @@ turns:
         assert template_path.exists(), f"Static template not found at {template_path}"
 
         content = template_path.read_text(encoding="utf-8")
-        script = PodcastScript.from_yaml(content)
+        script = ConversationScript.from_yaml(content)
         assert len(script.voices) == 1
         assert "narrator" in script.voices
         total_words = sum(len(turn.text.split()) for turn in script.turns)
@@ -262,8 +259,8 @@ turns:
 
         out_audio_file = tmp_path / "unicorn_fairytale.wav"
         with (
-            patch("tts_podcast_creator.cli.synthesize_script") as mock_synth,
-            patch("tts_podcast_creator.cli.eu_tts_client"),
+            patch("tts_audio_conversation.cli.synthesize_script") as mock_synth,
+            patch("tts_audio_conversation.cli.eu_tts_client"),
         ):
             mock_synth.return_value = out_audio_file
             synth_result = cli_runner.invoke(

@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 
-from tts_podcast_creator.logic.models import (
+from tts_audio_conversation.logic.models import (
     AudioEncoding,
+    ConversationMetadata,
+    ConversationScript,
     DialogueTurn,
-    PodcastMetadata,
-    PodcastScript,
     VoiceConfig,
 )
 
@@ -112,7 +112,7 @@ SAMPLE_TURNS_BY_LANG: dict[str, list[DialogueTurn]] = {
 }
 
 
-def create_script_template(language_code: str = "en-US") -> PodcastScript:
+def create_script_template(language_code: str = "en-US") -> ConversationScript:
     """Generate a starter 2-speaker script with native Chirp 3 HD voices.
 
     Sample dialogue exists for ``en``, ``de``, and ``fr`` language prefixes.
@@ -123,7 +123,7 @@ def create_script_template(language_code: str = "en-US") -> PodcastScript:
         language_code: BCP-47 language tag (e.g. ``en-US``, ``de-DE``).
 
     Returns:
-        Sample ``PodcastScript`` with independent turn copies.
+        Sample ``ConversationScript`` with independent turn copies.
     """
     lang_prefix = language_code.split("-")[0].lower()
     if lang_prefix not in SAMPLE_TURNS_BY_LANG:
@@ -134,10 +134,10 @@ def create_script_template(language_code: str = "en-US") -> PodcastScript:
         )
     source_turns = SAMPLE_TURNS_BY_LANG.get(lang_prefix, SAMPLE_TURNS_BY_LANG["en"])
     turns = [turn.model_copy() for turn in source_turns]
-    return PodcastScript(
-        metadata=PodcastMetadata(
-            title=f"Sample Podcast ({language_code})",
-            description="A 2-speaker automated podcast generated with Google Cloud TTS EU",
+    return ConversationScript(
+        metadata=ConversationMetadata(
+            title=f"Sample Conversation ({language_code})",
+            description="A 2-speaker automated conversation generated with Google Cloud TTS EU",
             language_code=language_code,
             audio_encoding=AudioEncoding.LINEAR16,
             sample_rate_hertz=24000,

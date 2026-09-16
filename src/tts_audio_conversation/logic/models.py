@@ -1,4 +1,4 @@
-"""Podcast script schema: speakers, turns, and episode metadata."""
+"""Conversation script schema: speakers, turns, and episode metadata."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from tts_podcast_creator.logic.exceptions import ScriptPayloadError
+from tts_audio_conversation.logic.exceptions import ScriptPayloadError
 
 _ALIAS_RE = re.compile(r"^[a-zA-Z0-9]+$")
 
@@ -71,7 +71,7 @@ class DialogueTurn(BaseModel):
         return stripped
 
 
-class PodcastMetadata(BaseModel):
+class ConversationMetadata(BaseModel):
     """Episode-level metadata and audio settings."""
 
     title: str = Field(..., description="Episode title")
@@ -89,15 +89,15 @@ class PodcastMetadata(BaseModel):
     )
 
 
-class PodcastScript(BaseModel):
-    """Validated podcast script: metadata, voices, and ordered turns."""
+class ConversationScript(BaseModel):
+    """Validated conversation script: metadata, voices, and ordered turns."""
 
-    metadata: PodcastMetadata = Field(..., description="Episode metadata")
+    metadata: ConversationMetadata = Field(..., description="Episode metadata")
     voices: dict[str, VoiceConfig] = Field(..., min_length=1, description="Speaker voice mappings")
     turns: list[DialogueTurn] = Field(..., min_length=1, description="Ordered dialogue turns")
 
     @model_validator(mode="after")
-    def validate_speakers(self) -> PodcastScript:
+    def validate_speakers(self) -> ConversationScript:
         """Ensure voice aliases are alphanumeric and every turn speaker is declared."""
         for alias in self.voices:
             if not _ALIAS_RE.fullmatch(alias):
@@ -125,7 +125,7 @@ class PodcastScript(BaseModel):
         return len(self.turns)
 
     @classmethod
-    def from_path(cls, path: Path | str) -> PodcastScript:
+    def from_path(cls, path: Path | str) -> ConversationScript:
         """Load a script from a YAML or JSON file."""
         script_path = Path(path)
         content = script_path.read_text(encoding="utf-8")
@@ -134,8 +134,8 @@ class PodcastScript(BaseModel):
         return cls.from_json(content)
 
     @classmethod
-    def from_yaml(cls, yaml_content: str) -> PodcastScript:
-        """Parse a PodcastScript from a YAML string."""
+    def from_yaml(cls, yaml_content: str) -> ConversationScript:
+        """Parse a ConversationScript from a YAML string."""
         data = yaml.safe_load(yaml_content)
         if not isinstance(data, dict):
             raise ValueError("YAML content must deserialize into a dictionary.")
@@ -146,8 +146,8 @@ class PodcastScript(BaseModel):
         return yaml.dump(self.model_dump(mode="json"), sort_keys=False, allow_unicode=True)
 
     @classmethod
-    def from_json(cls, json_content: str) -> PodcastScript:
-        """Parse a PodcastScript from a JSON string."""
+    def from_json(cls, json_content: str) -> ConversationScript:
+        """Parse a ConversationScript from a JSON string."""
         return cls.model_validate(json.loads(json_content))
 
     def to_json(self) -> str:
@@ -155,7 +155,7 @@ class PodcastScript(BaseModel):
         return self.model_dump_json(indent=2)
 
     @classmethod
-    def from_payload(cls, payload: str, *, max_bytes: int | None = None) -> PodcastScript:
+    def from_payload(cls, payload: str, *, max_bytes: int | None = None) -> ConversationScript:
         """Parse a YAML or JSON script string, optionally enforcing a byte cap.
 
         JSON is detected when the stripped payload starts with ``{``.
@@ -176,7 +176,7 @@ class PodcastScript(BaseModel):
         if max_bytes is not None and len(encoded) > max_bytes:
             raise ScriptPayloadError(
                 f"Script payload is {len(encoded)} bytes; "
-                f"max is {max_bytes} (PODCAST_MAX_SCRIPT_BYTES)."
+                f"max is {max_bytes} (AUDIO_CONVERSATION_MAX_SCRIPT_BYTES)."
             )
         stripped = payload.strip()
         if not stripped:

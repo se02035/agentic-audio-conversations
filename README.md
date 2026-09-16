@@ -2,7 +2,7 @@
 
 Generate spoken **audio conversations** from a YAML (or JSON) script using Google Cloud **Chirp 3 HD** Text-to-Speech, with **EU data residency** and **EU ML processing**. Synthesis, translation, and stored audio stay on EU regional endpoints and EU GCS buckets — not the global TTS/Translation APIs.
 
-Agents and humans share one library (`src/tts_podcast_creator/logic`). A **CLI** writes a local WAV; a **FastMCP HTTP** server starts the same work as a background job and leaves the file on an EU GCS bucket.
+Agents and humans share one library (`src/tts_audio_conversation/logic`). A **CLI** writes a local WAV; a **FastMCP HTTP** server starts the same work as a background job and leaves the file on an EU GCS bucket.
 
 ## The problem
 
@@ -31,7 +31,7 @@ It treats Cloud TTS as a **batch engine**, not a one-shot renderer:
 - Turns packed at ≤1500 characters, GAPIC retry per batch, LINEAR16 WAV stitched locally
 - Translation on `translate-eu.googleapis.com` / `europe-west1`
 - Writes only to GCS buckets on the EU allowlist: `EU`, `EUR4`, `europe-central2`, `europe-north1`, `europe-north2`, `europe-southwest1`, `europe-west1`, `europe-west3`, `europe-west4`, `europe-west8`, `europe-west9`, `europe-west10`, `europe-west12`
-- MCP `start_podcast` returns before `synthesize_speech`; status is polled; audio is fetched from GCS by the caller
+- MCP `start_conversation` returns before `synthesize_speech`; status is polled; audio is fetched from GCS by the caller
 
 ```mermaid
 flowchart LR
@@ -60,7 +60,7 @@ sequenceDiagram
   participant Worker
   participant TTS
   participant GCS
-  Client->>MCP: start_podcast script
+  Client->>MCP: start_conversation script
   MCP->>TTS: list_voices
   MCP->>GCS: status.json queued
   MCP-->>Client: job_id and gs URIs
@@ -69,7 +69,7 @@ sequenceDiagram
     TTS-->>Worker: LINEAR16 chunk
   end
   Worker->>GCS: audio.wav and status succeeded
-  Client->>MCP: get_podcast_status
+  Client->>MCP: get_conversation_status
   MCP-->>Client: succeeded plus audio_uri
 ```
 
@@ -81,7 +81,7 @@ sequenceDiagram
 | [`docs/synthesis.md`](docs/synthesis.md) | Batching, stitching, Companion voice, retries, cancel |
 | [`docs/gcp-design.md`](docs/gcp-design.md) | Why these GCP APIs and EU endpoints, not Long Audio or global TTS |
 | [`AGENTS.md`](AGENTS.md) | Layout, quality gate, which tests to run |
-| [`.agents/skills/podcast-creator/SKILL.md`](.agents/skills/podcast-creator/SKILL.md) | Agent skill for producing episodes |
+| [`.agents/skills/audio-conversation/SKILL.md`](.agents/skills/audio-conversation/SKILL.md) | Agent skill for producing episodes |
 
 ## Develop
 

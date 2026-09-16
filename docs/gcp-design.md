@@ -33,20 +33,20 @@ Retry is **per batch**, not around the whole job. A custom outer loop would re-b
 
 Cloud Translation v3 `translate_text` is used with parent `projects/{id}/locations/europe-west1`. One RPC is enough for short scripts; long templates can exceed a comfortable payload, so contents are packed at **8000 characters** per request (under the 102400 code-point API cap).
 
-Voice remapping is string-level locale prefix swap, then a catalog check on `synthesize` / `start_podcast` so a missing German Chirp 3 persona fails before billed TTS.
+Voice remapping is string-level locale prefix swap, then a catalog check on `synthesize` / `start_conversation` so a missing German Chirp 3 persona fails before billed TTS.
 
 ## MCP jobs vs FastMCP native tasks
 
 Synthesis can take minutes. MCP tools must not block that long.
 
-This server uses **app-level jobs** (`JobManager`): `start_podcast` returns `job_id` + `gs://` URIs after `list_voices` and persisting `queued`. FastMCP native tasks are off (`tasks=False`). Inspector protocol era can stay legacy.
+This server uses **app-level jobs** (`JobManager`): `start_conversation` returns `job_id` + `gs://` URIs after `list_voices` and persisting `queued`. FastMCP native tasks are off (`tasks=False`). Inspector protocol era can stay legacy.
 
 Status lives in memory for the live process and in GCS `status.json` so polls survive a restart. There is **no TTS resume**: stale `queued`/`running` (missing heartbeat or older than 30 min) becomes `failed`. Cancel after restart only writes `cancelled` — the worker is gone.
 
 Audio is never streamed back through MCP. Clients download the WAV with their own GCS credentials. That keeps the anonymous localhost server from becoming a file proxy and keeps the large blob on the EU bucket.
 
-Concurrency is capped (`PODCAST_MAX_CONCURRENT_JOBS`, default 4) to protect Cloud TTS quota. The process is **single-worker**; horizontal replicas would split in-memory jobs.
+Concurrency is capped (`AUDIO_CONVERSATION_MAX_CONCURRENT_JOBS`, default 4) to protect Cloud TTS quota. The process is **single-worker**; horizontal replicas would split in-memory jobs.
 
 ## Observability
 
-OpenTelemetry spans (`synthesize_script`, `tts.batch`, `podcast.job`, GCS upload) export to stderr and optionally Cloud Trace (`OTEL_TRACES_EXPORTER`). Console spans stay on stderr so they do not corrupt HTTP JSON-RPC.
+OpenTelemetry spans (`synthesize_script`, `tts.batch`, `conversation.job`, GCS upload) export to stderr and optionally Cloud Trace (`OTEL_TRACES_EXPORTER`). Console spans stay on stderr so they do not corrupt HTTP JSON-RPC.

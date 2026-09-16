@@ -16,7 +16,7 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
 )
 
-from tts_podcast_creator.logic.settings import Settings
+from tts_audio_conversation.logic.settings import Settings
 
 logger = logging.getLogger(__name__)
 _PROVIDER_SET = False

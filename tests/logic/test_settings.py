@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tts_podcast_creator.logic.settings import Settings
+from tts_audio_conversation.logic.settings import Settings
 
 
 def test_require_loopback_mcp_host_accepts_local_binds() -> None:

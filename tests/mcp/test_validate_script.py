@@ -33,10 +33,10 @@ async def test_validate_script_rejects_invalid_yaml() -> None:
 
 
 async def test_validate_script_rejects_oversize(sample_script_yaml: str) -> None:
-    """Byte cap applies to validate_script as well as start_podcast."""
+    """Byte cap applies to validate_script as well as start_conversation."""
     mcp, _manager, _gcs = mcp_app(
         instant_synth,
-        settings=mcp_settings(podcast_max_script_bytes=32),
+        settings=mcp_settings(audio_conversation_max_script_bytes=32),
     )
     async with Client(mcp) as client:
         result = tool_data(

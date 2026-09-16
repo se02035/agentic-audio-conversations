@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from tts_podcast_creator.logic.settings import Settings
-from tts_podcast_creator.logic.telemetry import setup_telemetry
+from tts_audio_conversation.logic.settings import Settings
+from tts_audio_conversation.logic.telemetry import setup_telemetry
 
 
 def test_console_exporter_prints_spans(capsys: object) -> None:
@@ -12,8 +12,8 @@ def test_console_exporter_prints_spans(capsys: object) -> None:
         Settings(google_cloud_project="test-proj", otel_traces_exporter="console")
     )
     tracer = provider.get_tracer("tests.telemetry")
-    with tracer.start_as_current_span("start_podcast"):
+    with tracer.start_as_current_span("start_conversation"):
         pass
     captured = capsys.readouterr()  # type: ignore[attr-defined]
-    assert "start_podcast" in captured.err
+    assert "start_conversation" in captured.err
     assert "[span]" in captured.err

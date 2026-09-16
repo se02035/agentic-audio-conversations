@@ -2404,7 +2404,7 @@ wheels = [
 ]
 
 [[package]]
-name = "tts-podcast-creator"
+name = "tts-audio-conversation"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

@@ -7,17 +7,17 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from tts_podcast_creator.logic.models import (
+from tts_audio_conversation.logic.models import (
     AudioEncoding,
+    ConversationMetadata,
+    ConversationScript,
     DialogueTurn,
-    PodcastMetadata,
-    PodcastScript,
     VoiceConfig,
 )
 
 
 class TestModels:
-    """Test suite for Pydantic models in tts_podcast_creator."""
+    """Test suite for Pydantic models in tts_audio_conversation."""
 
     def test_voice_config_rejects_non_chirp3(self) -> None:
         """Schema rejects voices whose name does not contain Chirp3-HD."""
@@ -37,8 +37,8 @@ class TestModels:
             DialogueTurn(speaker="host", text="   ")
 
     def test_podcast_script_valid_dict(self, sample_script_dict: dict[str, Any]) -> None:
-        """Test creating a valid PodcastScript from dictionary."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        """Test creating a valid ConversationScript from dictionary."""
+        script = ConversationScript.model_validate(sample_script_dict)
         assert script.metadata.title == "Tech Pulse Europe"
         assert script.metadata.audio_encoding == AudioEncoding.LINEAR16
         assert len(script.turns) == 3
@@ -46,27 +46,27 @@ class TestModels:
         assert "guest" in script.voices
 
     def test_podcast_script_from_yaml(self, sample_script_yaml: str) -> None:
-        """Test parsing PodcastScript from YAML string."""
-        script = PodcastScript.from_yaml(sample_script_yaml)
+        """Test parsing ConversationScript from YAML string."""
+        script = ConversationScript.from_yaml(sample_script_yaml)
         assert script.metadata.title == "Tech Pulse Europe"
         assert script.turns[1].speaker == "guest"
 
     def test_podcast_script_from_json(self, sample_script_json: str) -> None:
-        """Test parsing PodcastScript from JSON string."""
-        script = PodcastScript.from_json(sample_script_json)
+        """Test parsing ConversationScript from JSON string."""
+        script = ConversationScript.from_json(sample_script_json)
         assert script.metadata.title == "Tech Pulse Europe"
         assert len(script.turns) == 3
 
     def test_podcast_script_to_yaml(self, sample_script_dict: dict[str, Any]) -> None:
-        """Test converting PodcastScript back to YAML string."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        """Test converting ConversationScript back to YAML string."""
+        script = ConversationScript.model_validate(sample_script_dict)
         yaml_out = script.to_yaml()
         assert "Tech Pulse Europe" in yaml_out
         assert "en-US-Chirp3-HD-Fenrir" in yaml_out
 
     def test_podcast_script_to_json(self, sample_script_dict: dict[str, Any]) -> None:
-        """Test converting PodcastScript back to JSON string."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        """Test converting ConversationScript back to JSON string."""
+        script = ConversationScript.model_validate(sample_script_dict)
         json_out = script.to_json()
         assert "Tech Pulse Europe" in json_out
 
@@ -79,7 +79,7 @@ class TestModels:
             }
         )
         with pytest.raises(ValidationError) as excinfo:
-            PodcastScript.model_validate(sample_script_dict)
+            ConversationScript.model_validate(sample_script_dict)
         assert "ghostspeaker" in str(excinfo.value)
 
     def test_non_alphanumeric_speaker_alias_raises(self) -> None:
@@ -89,19 +89,19 @@ class TestModels:
 
     def test_audio_encoding_enum_support(self) -> None:
         """Test supported audio encodings (MP3 and LINEAR16)."""
-        meta_mp3 = PodcastMetadata(
+        meta_mp3 = ConversationMetadata(
             title="Test", language_code="en-US", audio_encoding=AudioEncoding.MP3
         )
         assert meta_mp3.audio_encoding == AudioEncoding.MP3
 
-        meta_wav = PodcastMetadata(
+        meta_wav = ConversationMetadata(
             title="Test", language_code="en-US", audio_encoding=AudioEncoding.LINEAR16
         )
         assert meta_wav.audio_encoding == AudioEncoding.LINEAR16
 
     def test_character_count_and_turn_metrics(self, sample_script_dict: dict[str, Any]) -> None:
         """Test calculating character count and turn counts."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
         assert script.total_character_count > 50
         assert script.turn_count == 3
 
@@ -109,20 +109,20 @@ class TestModels:
         self, sample_script_yaml: str, sample_script_json: str
     ) -> None:
         """YAML and JSON payloads both parse; JSON is detected by a leading brace."""
-        yaml_script = PodcastScript.from_payload(sample_script_yaml)
-        json_script = PodcastScript.from_payload(sample_script_json)
+        yaml_script = ConversationScript.from_payload(sample_script_yaml)
+        json_script = ConversationScript.from_payload(sample_script_json)
         assert yaml_script.metadata.title == json_script.metadata.title
 
     def test_from_payload_rejects_oversize(self, sample_script_yaml: str) -> None:
         """Byte cap is enforced before parsing."""
-        from tts_podcast_creator.logic.exceptions import ScriptPayloadError
+        from tts_audio_conversation.logic.exceptions import ScriptPayloadError
 
         with pytest.raises(ScriptPayloadError, match="bytes"):
-            PodcastScript.from_payload(sample_script_yaml, max_bytes=8)
+            ConversationScript.from_payload(sample_script_yaml, max_bytes=8)
 
     def test_from_payload_rejects_empty(self) -> None:
         """Empty payloads are rejected."""
-        from tts_podcast_creator.logic.exceptions import ScriptPayloadError
+        from tts_audio_conversation.logic.exceptions import ScriptPayloadError
 
         with pytest.raises(ScriptPayloadError, match="empty"):
-            PodcastScript.from_payload("   ")
+            ConversationScript.from_payload("   ")

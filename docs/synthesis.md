@@ -10,7 +10,7 @@ This package therefore **batches** turns, retries each RPC independently, and **
 
 ```mermaid
 flowchart TD
-  script[PodcastScript]
+  script[ConversationScript]
   split[splitLongText]
   pack[batchTurns]
   rpc[synthesize_speech EU]
@@ -35,7 +35,7 @@ Speaker aliases must be `[a-zA-Z0-9]+` (Cloud TTS constraint). Names must contai
 
 `MultiSpeakerVoiceConfig` requires **at least two** speaker definitions. A one-speaker script gets an unused **Companion** persona (`Aoede` or `Fenrir`, whichever is not the primary). Companion is never given a turn.
 
-CLI `synthesize` and MCP `start_podcast` call EU `list_voices` and fail if a name (including Companion) is missing. `validate` / `validate_script` only check the `Chirp3-HD` substring.
+CLI `synthesize` and MCP `start_conversation` call EU `list_voices` and fail if a name (including Companion) is missing. `validate` / `validate_script` only check the `Chirp3-HD` substring.
 
 ## Retries and cancel
 

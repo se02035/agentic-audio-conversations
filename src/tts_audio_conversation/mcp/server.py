@@ -1,4 +1,4 @@
-"""Anonymous FastMCP Streamable HTTP server for podcast jobs."""
+"""Anonymous FastMCP Streamable HTTP server for conversation jobs."""
 
 from __future__ import annotations
 
@@ -13,11 +13,13 @@ from fastmcp.exceptions import ToolError
 from opentelemetry import trace
 from pydantic import BaseModel, Field
 
-from tts_podcast_creator.logic.exceptions import GcsResidencyError, JobNotFound, ScriptPayloadError
-from tts_podcast_creator.logic.settings import Settings
-from tts_podcast_creator.logic.storage import require_eu_bucket
-from tts_podcast_creator.logic.telemetry import setup_telemetry
-from tts_podcast_creator.mcp.jobs import JobManager, JobRecord, validate_payload
+from tts_audio_conversation.logic.exceptions import (
+    JobNotFound,
+    ScriptPayloadError,
+)
+from tts_audio_conversation.logic.settings import Settings
+from tts_audio_conversation.logic.telemetry import setup_telemetry
+from tts_audio_conversation.mcp.jobs import JobManager, JobRecord, validate_payload
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -37,7 +39,7 @@ class ValidateScriptResult(BaseModel):
     error: str | None = None
 
 
-def create_server(manager: JobManager, *, name: str = "tts-podcast-creator") -> FastMCP[Any]:
+def create_server(manager: JobManager, *, name: str = "tts-audio-conversation") -> FastMCP[Any]:
     """Build a FastMCP app bound to an existing ``JobManager``.
 
     Args:
@@ -51,20 +53,20 @@ def create_server(manager: JobManager, *, name: str = "tts-podcast-creator") -> 
 
     @mcp.tool(
         description=(
-            "Start single- or multi-speaker podcast synthesis. Validates voices via "
+            "Start single- or multi-speaker conversation synthesis. Validates voices via "
             "EU list_voices, writes queued status.json, and returns immediately. "
-            "Poll get_podcast_status; audio is never downloaded here."
+            "Poll get_conversation_status; audio is never downloaded here."
         )
     )
-    async def start_podcast(
-        script: str = Field(description="YAML or JSON podcast script payload."),
+    async def start_conversation(
+        script: str = Field(description="YAML or JSON conversation script payload."),
         translate_to: str | None = Field(
             default=None,
             description="Optional BCP-47 language tag. Translation runs in the worker, not here.",
         ),
     ) -> JobRecord:
         """Validate the script, enqueue a job, and return before any TTS call."""
-        with tracer.start_as_current_span("start_podcast"):
+        with tracer.start_as_current_span("start_conversation"):
             try:
                 return await manager.start(script, translate_to)
             except ScriptPayloadError as exc:
@@ -72,9 +74,9 @@ def create_server(manager: JobManager, *, name: str = "tts-podcast-creator") -> 
             except ValueError as exc:
                 raise ToolError(str(exc)) from exc
 
-    @mcp.tool(description="Poll a podcast job. Uses in-memory state, else GCS status.json.")
-    async def get_podcast_status(
-        job_id: str = Field(description="Job id returned by start_podcast."),
+    @mcp.tool(description="Poll a conversation job. Uses in-memory state, else GCS status.json.")
+    async def get_conversation_status(
+        job_id: str = Field(description="Job id returned by start_conversation."),
     ) -> JobRecord:
         """Return queued, running, succeeded, failed, or cancelled."""
         try:
@@ -88,8 +90,8 @@ def create_server(manager: JobManager, *, name: str = "tts-podcast-creator") -> 
             "batch may finish; later batches are skipped and audio is not uploaded."
         )
     )
-    async def cancel_podcast(
-        job_id: str = Field(description="Job id returned by start_podcast."),
+    async def cancel_conversation(
+        job_id: str = Field(description="Job id returned by start_conversation."),
     ) -> JobRecord:
         """Set the cooperative cancel flag without waiting for TTS."""
         try:
@@ -99,9 +101,9 @@ def create_server(manager: JobManager, *, name: str = "tts-podcast-creator") -> 
 
     @mcp.tool(description="Validate a YAML or JSON script payload. Does not write GCS.")
     def validate_script(
-        script: str = Field(description="YAML or JSON podcast script payload."),
+        script: str = Field(description="YAML or JSON conversation script payload."),
     ) -> ValidateScriptResult:
-        """Check schema and PODCAST_MAX_SCRIPT_BYTES without starting a job."""
+        """Check schema and AUDIO_CONVERSATION_MAX_SCRIPT_BYTES without starting a job."""
         return ValidateScriptResult.model_validate(validate_payload(script, manager.settings))
 
     return mcp
@@ -120,15 +122,8 @@ def main() -> None:
     settings = Settings()
     try:
         host = settings.require_loopback_mcp_host()
-        bucket = settings.require_gcs_bucket()
-        from google.cloud import storage  # type: ignore[attr-defined]
-
-        from tts_podcast_creator.logic.auth import get_credentials_and_project
-
-        credentials, project_id = get_credentials_and_project()
-        gcs_client = storage.Client(project=project_id, credentials=credentials)
-        require_eu_bucket(gcs_client, bucket)
-    except (ValueError, GcsResidencyError) as exc:
+        settings.require_gcs_bucket()
+    except ValueError as exc:
         logger.error("%s", exc)
         raise SystemExit(1) from exc
     setup_telemetry(settings)

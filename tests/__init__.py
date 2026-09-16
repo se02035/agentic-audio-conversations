@@ -1,1 +1,1 @@
-"""Test package for tts_podcast_creator."""
+"""Test package for tts_audio_conversation."""

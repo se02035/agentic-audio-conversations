@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from google.cloud import texttospeech
 
-from tts_podcast_creator.logic.client import (
+from tts_audio_conversation.logic.client import (
     EU_TTS_ENDPOINT,
     MAX_BATCH_CHARS,
     TTS_RETRY,
@@ -24,8 +24,8 @@ from tts_podcast_creator.logic.client import (
     split_long_text,
     synthesize_script,
 )
-from tts_podcast_creator.logic.exceptions import VoiceCatalogError
-from tts_podcast_creator.logic.models import DialogueTurn, PodcastScript
+from tts_audio_conversation.logic.exceptions import VoiceCatalogError
+from tts_audio_conversation.logic.models import ConversationScript, DialogueTurn
 
 
 def _wav_bytes(n_frames: int = 240, sample_rate: int = 24000) -> bytes:
@@ -48,7 +48,9 @@ class TestPodcastTTSClient:
 
     def test_eu_tts_client_uses_eu_endpoint(self, mock_credentials: MagicMock) -> None:
         """ClientOptions must target eu-texttospeech."""
-        with patch("tts_podcast_creator.logic.client.texttospeech.TextToSpeechClient") as mock_cls:
+        with patch(
+            "tts_audio_conversation.logic.client.texttospeech.TextToSpeechClient"
+        ) as mock_cls:
             eu_tts_client(mock_credentials)
         _, kwargs = mock_cls.call_args
         assert kwargs["client_options"].api_endpoint == EU_TTS_ENDPOINT
@@ -74,7 +76,7 @@ class TestPodcastTTSClient:
         sample_script_dict["turns"] = [
             {"speaker": "narrator", "text": "Once upon a time."},
         ]
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
         configs, alias_map = speaker_voice_configs(script)
         assert alias_map["narrator"] == "narrator"
         assert len(configs) == 2
@@ -114,7 +116,7 @@ class TestPodcastTTSClient:
         sample_script_dict: dict[str, Any],
     ) -> None:
         """synthesize_speech is called per batch and a WAV is written."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.audio_content = _wav_bytes()
@@ -140,21 +142,21 @@ class TestPodcastTTSClient:
         sample_script_dict: dict[str, Any],
     ) -> None:
         """Optional GCS upload uses the official storage helper."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
         mock_tts = MagicMock()
         mock_tts.synthesize_speech.return_value = MagicMock(audio_content=_wav_bytes())
         mock_gcs = MagicMock()
 
-        with patch("tts_podcast_creator.logic.client.upload_file") as mock_upload:
+        with patch("tts_audio_conversation.logic.client.upload_file") as mock_upload:
             synthesize_script(
                 mock_tts,
                 script,
                 tmp_path / "episode.wav",
-                output_gcs_uri="gs://eu-bucket/podcasts/ep.wav",
+                output_gcs_uri="gs://eu-bucket/conversation/ep.wav",
                 gcs_client=mock_gcs,
             )
         mock_upload.assert_called_once()
-        assert mock_upload.call_args.args[1] == "gs://eu-bucket/podcasts/ep.wav"
+        assert mock_upload.call_args.args[1] == "gs://eu-bucket/conversation/ep.wav"
 
     def test_synthesize_script_requires_gcs_client_for_upload(
         self,
@@ -162,7 +164,7 @@ class TestPodcastTTSClient:
         sample_script_dict: dict[str, Any],
     ) -> None:
         """Uploads no longer construct a default storage.Client()."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
         mock_tts = MagicMock()
         mock_tts.synthesize_speech.return_value = MagicMock(audio_content=_wav_bytes())
         with pytest.raises(ValueError, match="gcs_client is required"):
@@ -170,7 +172,7 @@ class TestPodcastTTSClient:
                 mock_tts,
                 script,
                 tmp_path / "episode.wav",
-                output_gcs_uri="gs://eu-bucket/podcasts/ep.wav",
+                output_gcs_uri="gs://eu-bucket/conversation/ep.wav",
             )
 
     def test_synthesize_script_honours_should_cancel(
@@ -179,14 +181,14 @@ class TestPodcastTTSClient:
         sample_script_dict: dict[str, Any],
     ) -> None:
         """Cancel between batches skips remaining synthesize_speech calls and WAV write."""
-        from tts_podcast_creator.logic.exceptions import SynthesisCancelled
+        from tts_audio_conversation.logic.exceptions import SynthesisCancelled
 
         sample_script_dict["turns"] = [
             {"speaker": "host", "text": "Hello.", "pause_after_ms": 100},
             {"speaker": "guest", "text": "Hi there.", "pause_after_ms": 100},
             {"speaker": "host", "text": "Goodbye."},
         ]
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
         mock_client = MagicMock()
         mock_client.synthesize_speech.return_value = MagicMock(audio_content=_wav_bytes())
         dest = tmp_path / "cancelled.wav"
@@ -231,7 +233,7 @@ class TestPodcastTTSClient:
         self, sample_script_dict: dict[str, Any]
     ) -> None:
         """Catalog preflight passes when every script voice is listed."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
 
         def fake_list(_client: object, language_code: str | None = None) -> list[dict[str, str]]:
             assert language_code == "en-US"
@@ -246,7 +248,7 @@ class TestPodcastTTSClient:
         self, sample_script_dict: dict[str, Any]
     ) -> None:
         """Unknown Chirp 3 names fail before synthesize_speech."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
 
         def fake_list(_client: object, language_code: str | None = None) -> list[dict[str, str]]:
             return [
@@ -264,7 +266,7 @@ class TestPodcastTTSClient:
             "narrator": {"name": "en-US-Chirp3-HD-Fenrir", "language_code": "en-US"}
         }
         sample_script_dict["turns"] = [{"speaker": "narrator", "text": "Once upon a time."}]
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
 
         def fake_list(_client: object, language_code: str | None = None) -> list[dict[str, str]]:
             return [
@@ -278,7 +280,7 @@ class TestPodcastTTSClient:
         self, sample_script_dict: dict[str, Any]
     ) -> None:
         """ADC/list_voices failures fail fast."""
-        script = PodcastScript.model_validate(sample_script_dict)
+        script = ConversationScript.model_validate(sample_script_dict)
 
         def boom(_client: object, language_code: str | None = None) -> list[dict[str, str]]:
             raise RuntimeError("429")

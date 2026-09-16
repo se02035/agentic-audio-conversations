@@ -14,8 +14,8 @@ import pytest
 from opentelemetry import context as otel_context
 
 from tests.mcp.helpers import instant_synth, job_manager, mock_handles
-from tts_podcast_creator.logic.models import PodcastScript
-from tts_podcast_creator.mcp.jobs import JobRecord, JobStatus, utc_now
+from tts_audio_conversation.logic.models import ConversationScript
+from tts_audio_conversation.mcp.jobs import JobRecord, JobStatus, utc_now
 
 
 def test_handles_are_memoized() -> None:
@@ -45,8 +45,8 @@ def test_persist_record_propagates_upload_failure() -> None:
     record = JobRecord(
         job_id="job-1",
         status=JobStatus.queued,
-        audio_uri="gs://test-eu-bucket/podcasts/job-1/audio.wav",
-        status_uri="gs://test-eu-bucket/podcasts/job-1/status.json",
+        audio_uri="gs://test-eu-bucket/conversation/job-1/audio.wav",
+        status_uri="gs://test-eu-bucket/conversation/job-1/status.json",
         updated_at=utc_now(),
     )
     with pytest.raises(RuntimeError, match="gcs down"):
@@ -60,8 +60,8 @@ def test_mark_does_not_resume_failed_job() -> None:
     record = JobRecord(
         job_id=job_id,
         status=JobStatus.failed,
-        audio_uri="gs://test-eu-bucket/podcasts/failed-job/audio.wav",
-        status_uri="gs://test-eu-bucket/podcasts/failed-job/status.json",
+        audio_uri="gs://test-eu-bucket/conversation/failed-job/audio.wav",
+        status_uri="gs://test-eu-bucket/conversation/failed-job/status.json",
         error="stale",
         updated_at=utc_now(),
     )
@@ -76,13 +76,13 @@ def test_mark_does_not_resume_failed_job() -> None:
 def test_work_sync_does_not_succeed_failed_job(sample_script_yaml: str) -> None:
     """A stale-failed job is not reported as succeeded after TTS finishes."""
     manager, _gcs = job_manager(instant_synth)
-    script = PodcastScript.from_payload(sample_script_yaml)
+    script = ConversationScript.from_payload(sample_script_yaml)
     job_id = "stale-failed"
     record = JobRecord(
         job_id=job_id,
         status=JobStatus.failed,
-        audio_uri="gs://test-eu-bucket/podcasts/stale-failed/audio.wav",
-        status_uri="gs://test-eu-bucket/podcasts/stale-failed/status.json",
+        audio_uri="gs://test-eu-bucket/conversation/stale-failed/audio.wav",
+        status_uri="gs://test-eu-bucket/conversation/stale-failed/status.json",
         error="stale",
         updated_at=utc_now(),
     )
@@ -197,7 +197,7 @@ async def test_status_and_cancel_stay_responsive_when_worker_pool_is_busy() -> N
     manager._executor.shutdown(wait=False)
     blocked = threading.Event()
     release = threading.Event()
-    manager._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="podcast-tts")
+    manager._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="conversation-tts")
 
     def occupy() -> None:
         blocked.set()

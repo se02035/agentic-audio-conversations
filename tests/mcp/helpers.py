@@ -7,19 +7,19 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
-from tts_podcast_creator.logic.settings import Settings
-from tts_podcast_creator.mcp.jobs import CloudHandles, JobManager
-from tts_podcast_creator.mcp.server import create_server
+from tts_audio_conversation.logic.settings import Settings
+from tts_audio_conversation.mcp.jobs import CloudHandles, JobManager
+from tts_audio_conversation.mcp.server import create_server
 
 
 def mcp_settings(**kwargs: Any) -> Settings:
     """Build Settings that do not require ADC or a real bucket."""
     defaults: dict[str, Any] = {
         "google_cloud_project": "test-proj",
-        "podcast_gcs_bucket": "test-eu-bucket",
-        "podcast_gcs_prefix": "podcasts",
-        "podcast_max_concurrent_jobs": 4,
-        "podcast_max_script_bytes": 512000,
+        "audio_conversation_gcs_staging_bucket": "test-eu-bucket",
+        "audio_conversation_gcs_prefix": "conversation",
+        "audio_conversation_max_concurrent_jobs": 4,
+        "audio_conversation_max_script_bytes": 512000,
         "otel_traces_exporter": "none",
     }
     defaults.update(kwargs)

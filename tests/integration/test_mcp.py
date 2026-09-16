@@ -19,20 +19,20 @@ from tests.integration.mcp_live import (
     live_mcp_http,
     tool_data,
 )
-from tts_podcast_creator.logic.models import (
+from tts_audio_conversation.logic.models import (
+    ConversationMetadata,
+    ConversationScript,
     DialogueTurn,
-    PodcastMetadata,
-    PodcastScript,
     VoiceConfig,
 )
-from tts_podcast_creator.logic.storage import download_file
-from tts_podcast_creator.mcp.jobs import JobStatus
+from tts_audio_conversation.logic.storage import download_file
+from tts_audio_conversation.mcp.jobs import JobStatus
 
 
 def _smoke_script_yaml(*, title: str, line: str) -> str:
     """Tiny script so a live MCP job finishes in seconds, not minutes."""
-    script = PodcastScript(
-        metadata=PodcastMetadata(title=title, language_code="en-US"),
+    script = ConversationScript(
+        metadata=ConversationMetadata(title=title, language_code="en-US"),
         voices={
             "host": VoiceConfig(name="en-US-Chirp3-HD-Fenrir", language_code="en-US"),
         },
@@ -46,9 +46,9 @@ def _smoke_script_yaml(*, title: str, line: str) -> str:
 
 @pytest.mark.integration
 async def test_live_mcp_flow_start_status_gcs_download(tmp_path: Path) -> None:
-    """HTTP flow: start_podcast, poll get_podcast_status, download WAV + status.json from GCS."""
+    """HTTP flow: start, poll status, download WAV + status.json from GCS."""
     suffix = uuid.uuid4().hex[:8]
-    prefix = f"podcasts/live_mcp_flow_{suffix}"
+    prefix = f"conversation/live_mcp_flow_{suffix}"
     uris: list[str] = []
     async with live_mcp_http(prefix) as live:
         payload = _smoke_script_yaml(
@@ -59,17 +59,20 @@ async def test_live_mcp_flow_start_status_gcs_download(tmp_path: Path) -> None:
             async with Client(live.url) as client:
                 tools = {tool.name for tool in await client.list_tools()}
                 assert "download" not in tools
-                assert "start_podcast" in tools
-                assert "get_podcast_status" in tools
+                assert "start_conversation" in tools
+                assert "get_conversation_status" in tools
 
                 valid = tool_data(await client.call_tool("validate_script", {"script": payload}))
                 assert valid["valid"] is True
 
                 t0 = time.perf_counter()
-                started = tool_data(await client.call_tool("start_podcast", {"script": payload}))
+                started = tool_data(
+                    await client.call_tool("start_conversation", {"script": payload})
+                )
                 elapsed = time.perf_counter() - t0
                 assert elapsed < START_DEADLINE_SEC, (
-                    f"start_podcast blocked for {elapsed:.2f}s; expected < {START_DEADLINE_SEC}s"
+                    f"start_conversation blocked for {elapsed:.2f}s; "
+                    f"expected < {START_DEADLINE_SEC}s"
                 )
                 assert started["status"] in {JobStatus.queued, JobStatus.running}
                 uris.extend([started["audio_uri"], started["status_uri"]])
@@ -82,7 +85,10 @@ async def test_live_mcp_flow_start_status_gcs_download(tmp_path: Path) -> None:
                 status = started
                 while time.monotonic() < deadline:
                     status = tool_data(
-                        await client.call_tool("get_podcast_status", {"job_id": started["job_id"]})
+                        await client.call_tool(
+                            "get_conversation_status",
+                            {"job_id": started["job_id"]},
+                        )
                     )
                     seen.add(status["status"])
                     if status["status"] in {
@@ -112,9 +118,9 @@ async def test_live_mcp_flow_start_status_gcs_download(tmp_path: Path) -> None:
 
 @pytest.mark.integration
 async def test_live_mcp_two_concurrent_jobs_status_and_download(tmp_path: Path) -> None:
-    """Two HTTP start_podcast calls overlap; each job is polled and downloaded separately."""
+    """Two HTTP start_conversation calls overlap; each job is polled and downloaded separately."""
     suffix = uuid.uuid4().hex[:8]
-    prefix = f"podcasts/live_mcp_conc_{suffix}"
+    prefix = f"conversation/live_mcp_conc_{suffix}"
     uris: list[str] = []
     async with live_mcp_http(prefix) as live:
         script_a = _smoke_script_yaml(
@@ -128,17 +134,21 @@ async def test_live_mcp_two_concurrent_jobs_status_and_download(tmp_path: Path) 
         try:
             async with Client(live.url) as client:
                 t0 = time.perf_counter()
-                first = tool_data(await client.call_tool("start_podcast", {"script": script_a}))
+                first = tool_data(
+                    await client.call_tool("start_conversation", {"script": script_a})
+                )
                 first_elapsed = time.perf_counter() - t0
                 assert first_elapsed < START_DEADLINE_SEC, (
-                    f"first start_podcast blocked for {first_elapsed:.2f}s; "
+                    f"first start_conversation blocked for {first_elapsed:.2f}s; "
                     f"expected < {START_DEADLINE_SEC}s"
                 )
                 t1 = time.perf_counter()
-                second = tool_data(await client.call_tool("start_podcast", {"script": script_b}))
+                second = tool_data(
+                    await client.call_tool("start_conversation", {"script": script_b})
+                )
                 second_elapsed = time.perf_counter() - t1
                 assert second_elapsed < START_DEADLINE_SEC, (
-                    f"second start_podcast blocked for {second_elapsed:.2f}s; "
+                    f"second start_conversation blocked for {second_elapsed:.2f}s; "
                     f"expected < {START_DEADLINE_SEC}s"
                 )
                 assert first["job_id"] != second["job_id"]
@@ -162,10 +172,14 @@ async def test_live_mcp_two_concurrent_jobs_status_and_download(tmp_path: Path) 
                 s2 = second
                 while time.monotonic() < deadline:
                     s1 = tool_data(
-                        await client.call_tool("get_podcast_status", {"job_id": first["job_id"]})
+                        await client.call_tool(
+                            "get_conversation_status", {"job_id": first["job_id"]}
+                        )
                     )
                     s2 = tool_data(
-                        await client.call_tool("get_podcast_status", {"job_id": second["job_id"]})
+                        await client.call_tool(
+                            "get_conversation_status", {"job_id": second["job_id"]}
+                        )
                     )
                     active = {JobStatus.queued, JobStatus.running}
                     if s1["status"] in active and s2["status"] in active:

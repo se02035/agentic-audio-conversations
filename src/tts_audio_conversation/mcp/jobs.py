@@ -1,4 +1,4 @@
-"""In-process podcast jobs: validate immediately, synthesize in the background."""
+"""In-process conversation jobs: validate immediately, synthesize in the background."""
 
 from __future__ import annotations
 
@@ -20,9 +20,9 @@ from opentelemetry import context as otel_context
 from opentelemetry import trace
 from pydantic import BaseModel, Field
 
-from tts_podcast_creator.logic.exceptions import JobNotFound, SynthesisCancelled
-from tts_podcast_creator.logic.models import PodcastScript
-from tts_podcast_creator.logic.settings import Settings
+from tts_audio_conversation.logic.exceptions import JobNotFound, SynthesisCancelled
+from tts_audio_conversation.logic.models import ConversationScript
+from tts_audio_conversation.logic.settings import Settings
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -33,7 +33,7 @@ _STALE_ERROR = (
 
 
 class JobStatus(StrEnum):
-    """Lifecycle of one podcast generation job."""
+    """Lifecycle of one conversation generation job."""
 
     queued = "queued"
     running = "running"
@@ -61,7 +61,7 @@ class JobRecord(BaseModel):
 
 @dataclass
 class CloudHandles:
-    """ADC-backed SDK clients created inside the worker, never in start_podcast."""
+    """ADC-backed SDK clients created inside the worker, never in start_conversation."""
 
     credentials: Any
     project_id: str
@@ -71,12 +71,12 @@ class CloudHandles:
 
 ClientsFactory = Callable[[], CloudHandles]
 SynthesizeFn = Callable[..., Path]
-TranslateFn = Callable[[PodcastScript, str, CloudHandles], PodcastScript]
+TranslateFn = Callable[[ConversationScript, str, CloudHandles], ConversationScript]
 UploadBytesFn = Callable[[Any, str, bytes, str], None]
 DownloadBytesFn = Callable[[Any, str], bytes | None]
 UploadFileFn = Callable[[Any, str, Path], None]
 DeleteFileFn = Callable[[Any, str], None]
-VoiceCatalogFn = Callable[[PodcastScript, CloudHandles], None]
+VoiceCatalogFn = Callable[[ConversationScript, CloudHandles], None]
 
 
 def utc_now() -> datetime:
@@ -94,7 +94,7 @@ def as_utc(moment: datetime | None) -> datetime | None:
 
 
 class JobManager:
-    """Concurrent podcast jobs with cooperative cancel between TTS batches.
+    """Concurrent conversation jobs with cooperative cancel between TTS batches.
 
     ``start`` never waits on TTS. It may write ``status.json`` and call EU
     ``list_voices``. Extra jobs beyond the concurrency cap stay ``queued``.
@@ -129,20 +129,22 @@ class JobManager:
         self._lock = threading.Lock()
         self._handles_lock = threading.Lock()
         self._cached_handles: CloudHandles | None = None
-        self._semaphore = asyncio.Semaphore(settings.podcast_max_concurrent_jobs)
-        pool_size = max(settings.podcast_max_concurrent_jobs, 4)
+        self._semaphore = asyncio.Semaphore(settings.audio_conversation_max_concurrent_jobs)
+        pool_size = max(settings.audio_conversation_max_concurrent_jobs, 4)
         self._executor = ThreadPoolExecutor(
             max_workers=pool_size,
-            thread_name_prefix="podcast-tts",
+            thread_name_prefix="conversation-tts",
         )
         self._control_executor = ThreadPoolExecutor(
             max_workers=pool_size,
-            thread_name_prefix="podcast-ctl",
+            thread_name_prefix="conversation-ctl",
         )
 
-    def parse_script(self, payload: str) -> PodcastScript:
+    def parse_script(self, payload: str) -> ConversationScript:
         """Validate a YAML/JSON payload against the script schema and size cap."""
-        return PodcastScript.from_payload(payload, max_bytes=self.settings.podcast_max_script_bytes)
+        return ConversationScript.from_payload(
+            payload, max_bytes=self.settings.audio_conversation_max_script_bytes
+        )
 
     def _handles(self) -> CloudHandles:
         """Return memoized Cloud SDK clients, creating them on first use."""
@@ -151,7 +153,7 @@ class JobManager:
                 self._cached_handles = self._clients_factory()
             return self._cached_handles
 
-    def _preflight_voices(self, script: PodcastScript, translate_to: str | None) -> None:
+    def _preflight_voices(self, script: ConversationScript, translate_to: str | None) -> None:
         """Confirm Chirp 3 HD names exist in the EU catalog before enqueueing."""
         handles = self._handles()
         checker = self._voice_catalog or _default_voice_catalog
@@ -162,7 +164,7 @@ class JobManager:
         target_lang = translate_to.lower()
         if current_lang == target_lang or current_lang.startswith(f"{target_lang}-"):
             return
-        from tts_podcast_creator.logic.translator import remap_script_voices
+        from tts_audio_conversation.logic.translator import remap_script_voices
 
         preview = remap_script_voices(script, translate_to)
         checker(preview, handles)
@@ -200,7 +202,7 @@ class JobManager:
         parent_ctx = otel_context.get_current()
         task = asyncio.create_task(
             self._run_job(job_id, script, translate_to, parent_ctx),
-            name=f"podcast-job-{job_id}",
+            name=f"conversation-job-{job_id}",
         )
         self._tasks[job_id] = task
         task.add_done_callback(lambda _t: self._tasks.pop(job_id, None))
@@ -322,11 +324,11 @@ class JobManager:
         if heartbeat is None:
             return True
         age = utc_now() - heartbeat
-        return age >= timedelta(seconds=self.settings.podcast_job_stale_ttl_sec)
+        return age >= timedelta(seconds=self.settings.audio_conversation_job_stale_ttl_sec)
 
     def _prune(self) -> None:
         """Drop terminal in-memory jobs older than the prune TTL."""
-        cutoff = utc_now() - timedelta(seconds=self.settings.podcast_job_prune_ttl_sec)
+        cutoff = utc_now() - timedelta(seconds=self.settings.audio_conversation_job_prune_ttl_sec)
         drop: list[str] = []
         with self._lock:
             for job_id, record in self._jobs.items():
@@ -346,14 +348,14 @@ class JobManager:
     async def _run_job(
         self,
         job_id: str,
-        script: PodcastScript,
+        script: ConversationScript,
         translate_to: str | None,
         parent_ctx: otel_context.Context,
     ) -> None:
         token = otel_context.attach(parent_ctx)
         try:
-            with tracer.start_as_current_span("podcast.job") as span:
-                span.set_attribute("podcast.job_id", job_id)
+            with tracer.start_as_current_span("conversation.job") as span:
+                span.set_attribute("conversation.job_id", job_id)
                 if self._cancel_events[job_id].is_set():
                     self._mark(job_id, JobStatus.cancelled)
                     return
@@ -376,7 +378,7 @@ class JobManager:
                 except SynthesisCancelled:
                     self._mark(job_id, JobStatus.cancelled)
                 except Exception as exc:
-                    logger.exception("Podcast job %s failed", job_id)
+                    logger.exception("Conversation job %s failed", job_id)
                     self._mark(job_id, JobStatus.failed, error=str(exc))
                 finally:
                     self._semaphore.release()
@@ -389,7 +391,7 @@ class JobManager:
     def _work_sync(
         self,
         job_id: str,
-        script: PodcastScript,
+        script: ConversationScript,
         translate_to: str | None,
         ctx: otel_context.Context,
     ) -> None:
@@ -412,7 +414,7 @@ class JobManager:
                 target_lang = translate_to.lower()
                 already = current_lang == target_lang or current_lang.startswith(f"{target_lang}-")
                 if not already:
-                    with tracer.start_as_current_span("podcast.translate"):
+                    with tracer.start_as_current_span("conversation.translate"):
                         if self._translate is not None:
                             script = self._translate(script, translate_to, clients())
                         else:
@@ -420,7 +422,7 @@ class JobManager:
                                 script,
                                 translate_to,
                                 clients(),
-                                max_chars=self.settings.podcast_translate_max_chars,
+                                max_chars=self.settings.audio_conversation_translate_max_chars,
                             )
                     checker = self._voice_catalog or _default_voice_catalog
                     checker(script, clients())
@@ -435,7 +437,7 @@ class JobManager:
             def on_progress(batch_idx: int, batch_count: int) -> None:
                 self._mark(job_id, JobStatus.running, progress=f"batch {batch_idx}/{batch_count}")
 
-            with tempfile.TemporaryDirectory(prefix=f"podcast-{job_id}-") as tmp:
+            with tempfile.TemporaryDirectory(prefix=f"conversation-{job_id}-") as tmp:
                 wav_path = Path(tmp) / "audio.wav"
                 cloud = clients()
                 self._synthesize(
@@ -555,8 +557,8 @@ def default_clients_factory() -> CloudHandles:
     """Build EU TTS + GCS clients from Application Default Credentials."""
     from google.cloud import storage  # type: ignore[attr-defined]
 
-    from tts_podcast_creator.logic.auth import get_credentials_and_project
-    from tts_podcast_creator.logic.client import eu_tts_client
+    from tts_audio_conversation.logic.auth import get_credentials_and_project
+    from tts_audio_conversation.logic.client import eu_tts_client
 
     credentials, project_id = get_credentials_and_project()
     return CloudHandles(
@@ -569,54 +571,56 @@ def default_clients_factory() -> CloudHandles:
 
 def _default_synthesize(
     tts_client: Any,
-    script: PodcastScript,
+    script: ConversationScript,
     output_path: Path,
     **kwargs: Any,
 ) -> Path:
-    from tts_podcast_creator.logic.client import synthesize_script
+    from tts_audio_conversation.logic.client import synthesize_script
 
     return synthesize_script(tts_client, script, output_path, **kwargs)
 
 
 def _default_translate(
-    script: PodcastScript,
+    script: ConversationScript,
     translate_to: str,
     handles: CloudHandles,
     *,
     max_chars: int,
-) -> PodcastScript:
-    from tts_podcast_creator.logic.translator import PodcastTranslator
+) -> ConversationScript:
+    from tts_audio_conversation.logic.translator import ConversationTranslator
 
-    translator = PodcastTranslator(project_id=handles.project_id, credentials=handles.credentials)
+    translator = ConversationTranslator(
+        project_id=handles.project_id, credentials=handles.credentials
+    )
     return translator.translate_script(script, translate_to, max_chars=max_chars)
 
 
-def _default_voice_catalog(script: PodcastScript, handles: CloudHandles) -> None:
-    from tts_podcast_creator.logic.client import assert_voices_in_catalog
+def _default_voice_catalog(script: ConversationScript, handles: CloudHandles) -> None:
+    from tts_audio_conversation.logic.client import assert_voices_in_catalog
 
     assert_voices_in_catalog(handles.tts_client, script)
 
 
 def _default_upload_bytes(gcs_client: Any, gcs_uri: str, data: bytes, content_type: str) -> None:
-    from tts_podcast_creator.logic.storage import upload_bytes
+    from tts_audio_conversation.logic.storage import upload_bytes
 
     upload_bytes(gcs_client, gcs_uri, data, content_type)
 
 
 def _default_download_bytes(gcs_client: Any, gcs_uri: str) -> bytes | None:
-    from tts_podcast_creator.logic.storage import download_bytes
+    from tts_audio_conversation.logic.storage import download_bytes
 
     return download_bytes(gcs_client, gcs_uri)
 
 
 def _default_upload_file(gcs_client: Any, gcs_uri: str, source_path: Path) -> None:
-    from tts_podcast_creator.logic.storage import upload_file
+    from tts_audio_conversation.logic.storage import upload_file
 
     upload_file(gcs_client, gcs_uri, source_path)
 
 
 def _default_delete_file(gcs_client: Any, gcs_uri: str) -> None:
-    from tts_podcast_creator.logic.storage import delete_file
+    from tts_audio_conversation.logic.storage import delete_file
 
     delete_file(gcs_client, gcs_uri)
 
@@ -624,7 +628,9 @@ def _default_delete_file(gcs_client: Any, gcs_uri: str) -> None:
 def validate_payload(payload: str, settings: Settings) -> dict[str, Any]:
     """Return a validation summary for MCP ``validate_script``."""
     try:
-        script = PodcastScript.from_payload(payload, max_bytes=settings.podcast_max_script_bytes)
+        script = ConversationScript.from_payload(
+            payload, max_bytes=settings.audio_conversation_max_script_bytes
+        )
     except Exception as exc:
         return {
             "valid": False,

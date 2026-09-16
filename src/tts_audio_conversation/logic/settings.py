@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """Load podcast creator settings from the environment and optional ``.env``."""
+    """Load audio conversation settings from the environment and optional ``.env``."""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -22,47 +22,47 @@ class Settings(BaseSettings):
         default=None,
         description="GCP project ID (GOOGLE_CLOUD_PROJECT). CLI can fall back to ADC.",
     )
-    podcast_gcs_bucket: str | None = Field(
+    audio_conversation_gcs_staging_bucket: str | None = Field(
         default=None,
         description="EU GCS bucket name for MCP audio and status objects.",
     )
-    podcast_gcs_prefix: str = Field(
-        default="podcasts", description="Object prefix inside the bucket."
+    audio_conversation_gcs_prefix: str = Field(
+        default="conversation", description="Object prefix inside the bucket."
     )
-    podcast_max_script_bytes: int = Field(
+    audio_conversation_max_script_bytes: int = Field(
         default=512000,
         ge=1,
         description="Soft cap on YAML/JSON script payloads.",
     )
-    podcast_max_concurrent_jobs: int = Field(
+    audio_conversation_max_concurrent_jobs: int = Field(
         default=4,
         ge=1,
         description="In-flight TTS job cap. Extra jobs stay queued in the background.",
     )
-    podcast_job_stale_ttl_sec: int = Field(
+    audio_conversation_job_stale_ttl_sec: int = Field(
         default=1800,
         ge=1,
         description="queued/running jobs with no heartbeat older than this are failed.",
     )
-    podcast_job_prune_ttl_sec: int = Field(
+    audio_conversation_job_prune_ttl_sec: int = Field(
         default=3600,
         ge=1,
         description="Drop terminal jobs from in-memory state after this many seconds.",
     )
-    podcast_translate_max_chars: int = Field(
+    audio_conversation_translate_max_chars: int = Field(
         default=8000,
         ge=1,
         description="Max characters per Cloud Translation translate_text RPC.",
     )
     mcp_host: str = Field(default="127.0.0.1", description="FastMCP HTTP bind host.")
     mcp_port: int = Field(default=8000, ge=1, le=65535, description="FastMCP HTTP bind port.")
-    otel_service_name: str = Field(default="tts-podcast-creator")
+    otel_service_name: str = Field(default="tts-audio-conversation")
     otel_traces_exporter: str = Field(
         default="console,gcp",
         description="Comma list of exporters: console, gcp. Unknown names are ignored.",
     )
 
-    @field_validator("podcast_gcs_bucket", mode="before")
+    @field_validator("audio_conversation_gcs_staging_bucket", mode="before")
     @classmethod
     def normalize_bucket(cls, value: object) -> str | None:
         """Accept a bare bucket name or a ``gs://bucket/...`` URI."""
@@ -75,21 +75,21 @@ class Settings(BaseSettings):
             return text[5:].split("/", 1)[0]
         return text
 
-    @field_validator("podcast_gcs_prefix", mode="before")
+    @field_validator("audio_conversation_gcs_prefix", mode="before")
     @classmethod
     def normalize_prefix(cls, value: object) -> str:
         """Strip leading/trailing slashes from the object prefix."""
-        text = str(value).strip().strip("/") if value is not None else "podcasts"
-        return text or "podcasts"
+        text = str(value).strip().strip("/") if value is not None else "conversation"
+        return text or "conversation"
 
     def require_gcs_bucket(self) -> str:
         """Return the MCP bucket name or raise a configuration error."""
-        if not self.podcast_gcs_bucket:
+        if not self.audio_conversation_gcs_staging_bucket:
             raise ValueError(
-                "PODCAST_GCS_BUCKET is required for the MCP server. "
+                "AUDIO_CONVERSATION_GCS_STAGING_BUCKET is required for the MCP server. "
                 "Set it in .env to an EU-located bucket name (no gs:// prefix required)."
             )
-        return self.podcast_gcs_bucket
+        return self.audio_conversation_gcs_staging_bucket
 
     def require_loopback_mcp_host(self) -> str:
         """Return ``mcp_host`` when it is a loopback bind, else raise."""
@@ -104,7 +104,7 @@ class Settings(BaseSettings):
     def job_prefix_uri(self, job_id: str) -> str:
         """Return ``gs://bucket/prefix/job_id`` for a job."""
         bucket = self.require_gcs_bucket()
-        return f"gs://{bucket}/{self.podcast_gcs_prefix}/{job_id}"
+        return f"gs://{bucket}/{self.audio_conversation_gcs_prefix}/{job_id}"
 
     def parsed_trace_exporters(self) -> list[str]:
         """Return normalized exporter names from ``OTEL_TRACES_EXPORTER``."""

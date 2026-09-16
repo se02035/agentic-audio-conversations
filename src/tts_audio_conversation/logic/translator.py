@@ -11,10 +11,10 @@ from google.api_core.client_options import ClientOptions
 from google.auth.credentials import Credentials
 from google.cloud import translate_v3
 
-from tts_podcast_creator.logic.models import (
+from tts_audio_conversation.logic.models import (
+    ConversationMetadata,
+    ConversationScript,
     DialogueTurn,
-    PodcastMetadata,
-    PodcastScript,
     VoiceConfig,
 )
 
@@ -39,7 +39,7 @@ TRANSLATE_RETRY = retry.Retry(
 )
 
 
-class PodcastTranslator:
+class ConversationTranslator:
     """Translate turns via ``TranslationServiceClient`` on translate-eu."""
 
     def __init__(self, project_id: str, credentials: Credentials) -> None:
@@ -70,18 +70,18 @@ class PodcastTranslator:
         return map_voice_name(current_voice_name, target_lang)
 
     def remap_script_voices(
-        self, script: PodcastScript, target_language_code: str
-    ) -> PodcastScript:
+        self, script: ConversationScript, target_language_code: str
+    ) -> ConversationScript:
         """Return a copy of ``script`` with voices remapped to ``target_language_code``."""
         return remap_script_voices(script, target_language_code)
 
     def translate_script(
         self,
-        script: PodcastScript,
+        script: ConversationScript,
         target_language_code: str,
         *,
         max_chars: int = MAX_TRANSLATE_CHARS,
-    ) -> PodcastScript:
+    ) -> ConversationScript:
         """Translate all turns and remap voices to the target locale.
 
         Args:
@@ -120,14 +120,14 @@ class PodcastTranslator:
             for orig, translated in zip(script.turns, translated_texts, strict=True)
         ]
         remapped = remap_script_voices(script, target_language_code)
-        new_metadata = PodcastMetadata(
+        new_metadata = ConversationMetadata(
             title=f"{script.metadata.title} ({target_language_code})",
             description=script.metadata.description,
             language_code=target_language_code,
             audio_encoding=script.metadata.audio_encoding,
             sample_rate_hertz=script.metadata.sample_rate_hertz,
         )
-        return PodcastScript(metadata=new_metadata, voices=remapped.voices, turns=new_turns)
+        return ConversationScript(metadata=new_metadata, voices=remapped.voices, turns=new_turns)
 
     def _translate_texts(
         self,
@@ -166,7 +166,9 @@ def map_voice_name(current_voice_name: str, target_lang: str) -> str:
     return f"{target_lang}-{current_voice_name}"
 
 
-def remap_script_voices(script: PodcastScript, target_language_code: str) -> PodcastScript:
+def remap_script_voices(
+    script: ConversationScript, target_language_code: str
+) -> ConversationScript:
     """Return a copy of ``script`` with voices remapped to ``target_language_code``.
 
     Dialogue text is unchanged. Used to preflight Chirp 3 HD names before billed TTS.
@@ -179,7 +181,7 @@ def remap_script_voices(script: PodcastScript, target_language_code: str) -> Pod
         for alias, voice in script.voices.items()
     }
     new_metadata = script.metadata.model_copy(update={"language_code": target_language_code})
-    return PodcastScript(metadata=new_metadata, voices=new_voices, turns=script.turns)
+    return ConversationScript(metadata=new_metadata, voices=new_voices, turns=script.turns)
 
 
 def batch_translate_texts(texts: Sequence[str], max_chars: int) -> list[list[str]]:

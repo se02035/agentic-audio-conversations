@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tts-podcast-creator"
+name = "tts-audio-conversation"
 version = "0.1.0"
-description = "Automated 2-speaker podcast creator using Google Cloud Text-to-Speech Chirp 3 HD voices in the EU region"
+description = "Automated 2-speaker audio conversation using Google Cloud Text-to-Speech Chirp 3 HD voices in the EU region"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
@@ -42,12 +42,12 @@ dev = [
 ]
 
 [project.scripts]
-tts-podcast-creator = "tts_podcast_creator.cli:main"
-podcast-creator = "tts_podcast_creator.cli:main"
-tts-podcast-mcp = "tts_podcast_creator.mcp:main"
+tts-audio-conversation = "tts_audio_conversation.cli:main"
+audio-conversation = "tts_audio_conversation.cli:main"
+tts-audio-conversation-mcp = "tts_audio_conversation.mcp:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/tts_podcast_creator"]
+packages = ["src/tts_audio_conversation"]
 
 [tool.ruff]
 target-version = "py311"

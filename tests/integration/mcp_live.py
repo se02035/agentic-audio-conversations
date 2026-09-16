@@ -19,11 +19,11 @@ import uvicorn
 from dotenv import load_dotenv
 from google.cloud import storage  # type: ignore[attr-defined]
 
-from tts_podcast_creator.logic.auth import get_credentials_and_project
-from tts_podcast_creator.logic.settings import Settings
-from tts_podcast_creator.logic.storage import delete_file
-from tts_podcast_creator.mcp.jobs import JobManager, JobStatus
-from tts_podcast_creator.mcp.server import MCP_PATH, create_server
+from tts_audio_conversation.logic.auth import get_credentials_and_project
+from tts_audio_conversation.logic.settings import Settings
+from tts_audio_conversation.logic.storage import delete_file
+from tts_audio_conversation.mcp.jobs import JobManager, JobStatus
+from tts_audio_conversation.mcp.server import MCP_PATH, create_server
 
 load_dotenv()
 
@@ -45,14 +45,15 @@ def delete_gcs_blob(gcs_client: storage.Client, gcs_uri: str) -> None:
 def require_mcp_live_env() -> tuple[str, str]:
     """Need ADC project plus an EU bucket (explicit or derived from the test URI)."""
     project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
-    bucket = os.environ.get("PODCAST_GCS_BUCKET")
-    test_uri = os.environ.get("PODCAST_TEST_GCS_URI")
+    bucket = os.environ.get("AUDIO_CONVERSATION_GCS_STAGING_BUCKET")
+    test_uri = os.environ.get("AUDIO_CONVERSATION_TEST_GCS_URI")
     if not project_id:
         pytest.skip("GOOGLE_CLOUD_PROJECT must be set for integration tests")
     if not bucket:
         if not test_uri or not test_uri.startswith("gs://"):
             pytest.skip(
-                "PODCAST_GCS_BUCKET or PODCAST_TEST_GCS_URI must be set for MCP integration tests"
+                "AUDIO_CONVERSATION_GCS_STAGING_BUCKET or AUDIO_CONVERSATION_TEST_GCS_URI "
+                "must be set for MCP integration tests"
             )
         bucket = test_uri[5:].split("/", 1)[0]
     return project_id, bucket
@@ -112,9 +113,9 @@ async def live_mcp_http(
     gcs_client = storage.Client(project=resolved_proj, credentials=credentials)
     settings = Settings(
         google_cloud_project=resolved_proj,
-        podcast_gcs_bucket=bucket,
-        podcast_gcs_prefix=prefix,
-        podcast_max_concurrent_jobs=max_concurrent_jobs,
+        audio_conversation_gcs_staging_bucket=bucket,
+        audio_conversation_gcs_prefix=prefix,
+        audio_conversation_max_concurrent_jobs=max_concurrent_jobs,
         otel_traces_exporter="none",
     )
     manager = JobManager(settings)
@@ -183,11 +184,11 @@ async def poll_until_terminal(
     timeout: float,
     interval: float = 0.25,
 ) -> dict[str, Any]:
-    """Poll get_podcast_status until succeeded/failed/cancelled or timeout."""
+    """Poll get_conversation_status until succeeded/failed/cancelled or timeout."""
     status: dict[str, Any] | None = None
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        status = tool_data(await client.call_tool("get_podcast_status", {"job_id": job_id}))
+        status = tool_data(await client.call_tool("get_conversation_status", {"job_id": job_id}))
         if status["status"] in {JobStatus.succeeded, JobStatus.failed, JobStatus.cancelled}:
             return status
         await asyncio.sleep(interval)
