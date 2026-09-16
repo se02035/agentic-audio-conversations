@@ -13,7 +13,13 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-from tests.mcp.helpers import instant_synth, mcp_app, tool_data, upload_and_start, write_fake_wav
+from tests.unit.mcp.helpers import (
+    instant_synth,
+    mcp_app,
+    tool_data,
+    upload_and_start,
+    write_fake_wav,
+)
 from tts_audio_conversation.mcp.jobs import JobStatus
 
 
@@ -91,7 +97,7 @@ async def test_get_conversation_status_reads_gcs_when_job_evicted_from_memory(
 
 async def test_get_conversation_status_returns_gcs_running_without_auto_fail() -> None:
     """After restart, a running status.json is returned as-is (no stale auto-fail)."""
-    from tests.mcp.helpers import job_manager
+    from tests.unit.mcp.helpers import job_manager
 
     manager, gcs = job_manager(instant_synth)
     job_id = "orphan-job"
@@ -115,7 +121,7 @@ async def test_terminal_jobs_are_pruned_from_memory(sample_script_yaml: str) -> 
     """In-memory map does not retain terminal jobs past the prune TTL."""
     from datetime import timedelta
 
-    from tests.mcp.helpers import mcp_settings
+    from tests.unit.mcp.helpers import mcp_settings
     from tts_audio_conversation.mcp.jobs import utc_now
 
     mcp, service, _gcs = mcp_app(

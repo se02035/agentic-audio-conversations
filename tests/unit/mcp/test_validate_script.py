@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastmcp import Client
 
-from tests.mcp.helpers import instant_synth, mcp_app, mcp_settings, tool_data
+from tests.unit.mcp.helpers import instant_synth, mcp_app, mcp_settings, tool_data
 
 
 async def test_validate_script_accepts_yaml(sample_script_yaml: str) -> None:

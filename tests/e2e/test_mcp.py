@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from fastmcp import Client
 
-from tests.integration.mcp_live import (
+from tests.e2e.mcp_live import (
     SHORT_POLL_TIMEOUT_SEC,
     START_DEADLINE_SEC,
     assert_mono_wav,
@@ -45,7 +45,7 @@ def _smoke_script_yaml(*, title: str, line: str) -> str:
     return script.to_yaml()
 
 
-@pytest.mark.integration
+@pytest.mark.e2e
 async def test_live_mcp_flow_start_status_gcs_download(tmp_path: Path) -> None:
     """HTTP flow: start, poll status, download WAV + status.json from GCS."""
     suffix = uuid.uuid4().hex[:8]
@@ -126,7 +126,7 @@ async def test_live_mcp_flow_start_status_gcs_download(tmp_path: Path) -> None:
                 delete_gcs_blob(live.gcs_client, uri)
 
 
-@pytest.mark.integration
+@pytest.mark.e2e
 async def test_live_mcp_two_concurrent_jobs_status_and_download(tmp_path: Path) -> None:
     """Two HTTP start_conversation calls overlap; each job is polled and downloaded separately."""
     suffix = uuid.uuid4().hex[:8]

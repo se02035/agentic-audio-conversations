@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from tests.mcp.helpers import instant_synth, job_manager, mock_handles
+from tests.unit.mcp.helpers import instant_synth, job_manager, mock_handles
 from tts_audio_conversation.logic.jobs.models import ALLOWED_TRANSITIONS
 from tts_audio_conversation.logic.models import ConversationScript
 from tts_audio_conversation.mcp.jobs import JobRecord, JobStatus, utc_now

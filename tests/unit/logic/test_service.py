@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from tests.mcp.helpers import instant_synth, make_service
+from tests.unit.mcp.helpers import instant_synth, make_service
 from tts_audio_conversation.logic.exceptions import ScriptPayloadError
 from tts_audio_conversation.logic.models import ConversationScript
 from tts_audio_conversation.logic.results import TranslateScriptResult

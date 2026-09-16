@@ -13,7 +13,13 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-from tests.mcp.helpers import instant_synth, mcp_app, tool_data, upload_and_start, write_fake_wav
+from tests.unit.mcp.helpers import (
+    instant_synth,
+    mcp_app,
+    tool_data,
+    upload_and_start,
+    write_fake_wav,
+)
 from tts_audio_conversation.logic.exceptions import SynthesisCancelled
 from tts_audio_conversation.mcp.jobs import JobStatus
 

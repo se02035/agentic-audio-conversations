@@ -10,7 +10,13 @@ from typing import Any
 
 from fastmcp import Client
 
-from tests.mcp.helpers import mcp_app, mcp_settings, tool_data, upload_and_start, write_fake_wav
+from tests.unit.mcp.helpers import (
+    mcp_app,
+    mcp_settings,
+    tool_data,
+    upload_and_start,
+    write_fake_wav,
+)
 from tts_audio_conversation.mcp.jobs import JobStatus
 
 

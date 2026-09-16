@@ -18,10 +18,14 @@ _SLOW_NODE_FRAGMENTS = (
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Ensure every collected test has layer traits (unit or integration), plus slow when needed."""
+    """Apply layer markers from path (unit / integration / e2e), plus slow when needed."""
     for item in items:
         marks = {marker.name for marker in item.iter_markers()}
-        if "integration" in Path(item.path).parts:
+        parts = set(Path(item.path).parts)
+        if "e2e" in parts:
+            if "e2e" not in marks:
+                item.add_marker(pytest.mark.e2e)
+        elif "integration" in parts:
             if "integration" not in marks:
                 item.add_marker(pytest.mark.integration)
         elif "unit" not in marks:

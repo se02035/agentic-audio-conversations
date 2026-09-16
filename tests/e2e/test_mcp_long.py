@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from fastmcp import Client
 
-from tests.integration.mcp_live import (
+from tests.e2e.mcp_live import (
     LONG_POLL_TIMEOUT_SEC,
     START_DEADLINE_SEC,
     assert_mono_wav,
@@ -53,7 +53,7 @@ def _load_german_ai() -> ConversationScript:
     return script
 
 
-@pytest.mark.integration
+@pytest.mark.e2e
 @pytest.mark.slow
 async def test_live_mcp_long_form_unicorn_and_german_ai(tmp_path: Path) -> None:
     """Run both ~15-minute templates concurrently through MCP start/status/GCS download.

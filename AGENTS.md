@@ -19,8 +19,9 @@ Hatchling **src layout**, Python **>=3.11**, package `tts_audio_conversation`. I
 - [`src/tts_audio_conversation/cli/`](src/tts_audio_conversation/cli/) — Click adapter (`uv run tts-audio-conversation`)
 - [`src/tts_audio_conversation/mcp/server.py`](src/tts_audio_conversation/mcp/server.py) — FastMCP HTTP tools at `/mcp`
 - [`templates/`](templates/) — long-form sample scripts (slow live tests)
-- [`tests/logic/`](tests/logic/), [`tests/cli/`](tests/cli/), [`tests/mcp/`](tests/mcp/) — **unit** (mocked GCP)
-- [`tests/integration/`](tests/integration/) — **live** EU GCP
+- [`tests/unit/`](tests/unit/) — **unit** (mocked GCP: logic / cli / mcp)
+- [`tests/integration/`](tests/integration/) — **live** library facade / leaf GCP
+- [`tests/e2e/`](tests/e2e/) — **live** CLI + MCP HTTP adapters
 - Config: [`pyproject.toml`](pyproject.toml), [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 ```mermaid
@@ -54,12 +55,13 @@ Ruff: line length 100, Google pydocstyle; ignores `D100`/`D104`/`D107`. Mypy is 
 
 ## Tests
 
-Markers in [`pyproject.toml`](pyproject.toml); auto-applied in [`tests/conftest.py`](tests/conftest.py): paths under `tests/integration/` get `integration`; everything else gets `unit`. Nodeids matching unicorn / German AI / `test_mcp_long` also get `slow`.
+Markers in [`pyproject.toml`](pyproject.toml); auto-applied in [`tests/conftest.py`](tests/conftest.py) from path: `tests/unit/` → `unit`, `tests/integration/` → `integration`, `tests/e2e/` → `e2e`. Nodeids matching unicorn / German AI / `test_mcp_long` also get `slow`.
 
 | Intent | Command | When |
 | --- | --- | --- |
 | Default / CI | `uv run pytest -m unit --cov=… --cov-fail-under=85` | Always after code changes |
-| Live EU smoke | `uv run pytest -m "integration and not slow"` | ADC + `.env`; billed GCP |
+| Live library | `uv run pytest -m "integration and not slow"` | ADC + `.env`; billed GCP |
+| Live adapters | `uv run pytest -m "e2e and not slow"` | ADC + staging bucket |
 | Long-form (~15 min each) | `uv run pytest -m slow` | Only if the user asks |
 
 Live tests skip unless `GOOGLE_CLOUD_PROJECT` and `AUDIO_CONVERSATION_TEST_GCS_URI` / staging bucket are set. Delete GCS blobs in `finally` unless `KEEP_TEST_ARTIFACTS=true`. Do not commit `*.wav`, `*.mp3`, or `.env`.

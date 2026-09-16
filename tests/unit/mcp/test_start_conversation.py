@@ -13,7 +13,7 @@ import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
-from tests.mcp.helpers import (
+from tests.unit.mcp.helpers import (
     instant_synth,
     mcp_app,
     mcp_settings,
