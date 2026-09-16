@@ -1,0 +1,118 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tts-podcast-creator"
+version = "0.1.0"
+description = "Automated 2-speaker podcast creator using Google Cloud Text-to-Speech Chirp 3 HD voices in the EU region"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [
+    { name = "Oliver Li" }
+]
+dependencies = [
+    "google-auth>=2.28.0",
+    "google-cloud-texttospeech>=2.16.0",
+    "google-cloud-storage>=2.14.0",
+    "google-cloud-translate>=3.15.0",
+    "pydantic>=2.6.0",
+    "pydantic-settings>=2.2.0",
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "click>=8.1.7",
+    "rich>=13.7.0",
+    "fastmcp>=2.12.0",
+    "opentelemetry-sdk>=1.24.0",
+    "opentelemetry-exporter-gcp-trace>=1.6.0",
+    "opentelemetry-resourcedetector-gcp>=1.6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+    "types-pyyaml>=6.0.12.12",
+    "pre-commit>=3.6.0",
+]
+
+[project.scripts]
+tts-podcast-creator = "tts_podcast_creator.cli:main"
+podcast-creator = "tts_podcast_creator.cli:main"
+tts-podcast-mcp = "tts_podcast_creator.mcp:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tts_podcast_creator"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "D",   # pydocstyle (docstring checking)
+]
+ignore = [
+    "D100", # Missing docstring in public module
+    "D104", # Missing docstring in public package
+    "D107", # Missing docstring in __init__
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = [
+    "google.*",
+    "google.cloud.*",
+    "google.auth.*",
+    "google.api_core.*",
+    "fastmcp.*",
+    "opentelemetry.*",
+    "opentelemetry.sdk.*",
+    "opentelemetry.exporter.*",
+    "opentelemetry.resourcedetector.*",
+]
+ignore_missing_imports = true
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = true
+disallow_untyped_calls = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-v --tb=short --strict-markers"
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "unit: fast tests with no live GCP (select with '-m unit')",
+    "integration: live GCP EU tests requiring ADC and a bucket (deselect with '-m \"not integration\"')",
+    "slow: long-form live synthesis (~15 min per template)",
+]
