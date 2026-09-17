@@ -101,6 +101,35 @@ async def test_terminal_payload_mcp_error_becomes_failed(
     assert "down" in str(payload["error"])
 
 
+async def test_terminal_payload_download_exception_sets_download_error() -> None:
+    """GCS/download failures stay on the FunctionResponse; resume is not aborted."""
+
+    class _BoomClient(_StubClient):
+        def download_audio(self, audio_uri: str) -> bytes | None:
+            raise OSError(f"gcs down {audio_uri}")
+
+    plugin = _plugin(
+        _BoomClient(
+            {
+                "job_id": "job-1",
+                "status": JobStatus.succeeded.value,
+                "script_uri": "gs://b/s.yaml",
+                "audio_uri": "gs://b/a.wav",
+                "error": None,
+            }
+        )
+    )
+    payload, wav, name = await plugin._terminal_payload(
+        {"job_id": "job-1", "language_code": "en-US"}
+    )
+    assert wav is None
+    assert name is None
+    assert payload["status"] == "succeeded"
+    assert "audio_artifact" not in payload
+    assert "gcs down" in str(payload["download_error"])
+    assert "gs://b/a.wav" in str(payload["download_error"])
+
+
 async def test_after_tool_callback_records_function_call_id() -> None:
     """Queued start results are stored with the original function_call id."""
     plugin = _plugin(_StubClient({"job_id": "j"}))

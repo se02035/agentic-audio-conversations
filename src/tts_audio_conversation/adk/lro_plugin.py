@@ -15,6 +15,8 @@ from google.adk.plugins.base_plugin import BasePlugin
 from google.adk.runners import Runner
 from google.adk.tools.base_tool import BaseTool
 from google.adk.tools.tool_context import ToolContext
+from google.api_core.exceptions import GoogleAPIError
+from google.auth.exceptions import GoogleAuthError
 from google.genai import types
 
 from tts_audio_conversation.logic.jobs.models import JobStatus
@@ -242,15 +244,18 @@ class ConversationJobClientPlugin(BasePlugin):
         download_error: str | None = None
         if str(job.get("status")) == JobStatus.succeeded.value:
             audio_uri = str(job.get("audio_uri") or "")
-            wav_bytes = (
-                await asyncio.to_thread(self._client.download_audio, audio_uri)
-                if audio_uri
-                else None
-            )
-            if wav_bytes:
-                audio_name = audio_artifact_name(job_id, language_code)
+            if audio_uri:
+                try:
+                    wav_bytes = await asyncio.to_thread(self._client.download_audio, audio_uri)
+                except (OSError, ValueError, GoogleAPIError, GoogleAuthError) as exc:
+                    download_error = f"WAV download failed at {audio_uri}: {exc}"
+                else:
+                    if wav_bytes:
+                        audio_name = audio_artifact_name(job_id, language_code)
+                    else:
+                        download_error = f"WAV object missing at {audio_uri}"
             else:
-                download_error = f"WAV object missing at {audio_uri or '(empty audio_uri)'}"
+                download_error = "WAV object missing at (empty audio_uri)"
         payload = terminal_function_response(
             job,
             audio_artifact=audio_name,
