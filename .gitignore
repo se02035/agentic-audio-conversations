@@ -50,6 +50,9 @@ output/
 client_secret*.json
 *.log
 
+# ADK local runtime (sessions, artifacts, session.db)
+.adk/
+
 # IDE
 .idea/
 .DS_Store

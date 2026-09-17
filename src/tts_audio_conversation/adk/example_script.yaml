@@ -1,0 +1,20 @@
+metadata:
+  title: Audio Overview Demo
+  description: Short two-turn sample for the ADK playground (not a long-form template).
+  language_code: en-US
+  audio_encoding: LINEAR16
+  sample_rate_hertz: 24000
+voices:
+  host:
+    name: en-US-Chirp3-HD-Fenrir
+    language_code: en-US
+  guest:
+    name: en-US-Chirp3-HD-Aoede
+    language_code: en-US
+turns:
+  - speaker: host
+    text: Welcome to a short audio overview of Cloud TTS in the EU.
+    pause_after_ms: 300
+  - speaker: guest
+    text: Thanks. Chirp 3 HD voices make this two-speaker demo easy to follow.
+    pause_after_ms: 200

@@ -2,7 +2,7 @@
 
 Generate spoken **audio conversations** from a YAML (or JSON) script using Google Cloud **Chirp 3 HD** Text-to-Speech, with **EU ML processing** on regional endpoints. Synthesis and translation use EU TTS/Translation APIs; stage scripts and audio on an EU GCS bucket you configure.
 
-Agents and humans share one library facade: `AudioConversationService`. The **CLI** and **FastMCP HTTP** server are thin adapters over the same upload → translate → job flow.
+Agents and humans share one library facade: `AudioConversationService`. The **CLI**, **FastMCP HTTP** server, and optional **ADK Web** agent are thin adapters over the same upload → translate → job flow (ADK reaches synthesis only through MCP HTTP).
 
 ## The problem
 
@@ -32,6 +32,7 @@ It treats Cloud TTS as a **batch engine**, not a one-shot renderer:
 - Translation on `translate-eu.googleapis.com` / `europe-west1`
 - Scripts and jobs staged under `…/conversation/scripts/…` and `…/conversation/jobs/…`
 - Same orchestration for CLI and MCP: upload → optional translate → async job; MCP returns before `synthesize_speech`
+- Optional ADK Web playground: ingest a YAML artifact, validate via MCP, start a long-running create job, resume when the job is terminal
 
 ```mermaid
 flowchart LR
@@ -40,10 +41,13 @@ flowchart LR
   job[create_audio_job]
   tts[EU_TTS]
   gcs[GCS_staging]
+  adk[ADK_Web]
   upload --> gcs
   translate --> gcs
   job --> tts
   job --> gcs
+  adk --> upload
+  adk --> job
 ```
 
 ```mermaid
@@ -71,7 +75,7 @@ sequenceDiagram
 
 | Doc | Contents |
 | --- | --- |
-| [`docs/creating-audio.md`](docs/creating-audio.md) | Setup, script schema, CLI, MCP tools |
+| [`docs/creating-audio.md`](docs/creating-audio.md) | Setup, script schema, CLI, MCP tools, ADK Web agent |
 | [`docs/library-api.md`](docs/library-api.md) | `AudioConversationService` quickstart |
 | [`docs/synthesis.md`](docs/synthesis.md) | Batching, stitching, Companion voice, retries |
 | [`docs/gcp-design.md`](docs/gcp-design.md) | Why these GCP APIs and EU endpoints |

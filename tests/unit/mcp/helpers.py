@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
+from tts_audio_conversation.adk.mcp_client import gcs_stub_blob_path
 from tts_audio_conversation.logic.jobs.job import CloudHandles
 from tts_audio_conversation.logic.jobs.manager import JobManager
 from tts_audio_conversation.logic.service import AudioConversationService
@@ -42,16 +43,23 @@ def mock_handles() -> CloudHandles:
 class FakeGcs:
     """In-memory gs:// object store used as the MCP output sink."""
 
-    def __init__(self) -> None:
+    def __init__(self, persist_dir: Path | None = None) -> None:
+        """Optionally mirror blobs to ``persist_dir`` for an ADK API-server child."""
         self.objects: dict[str, bytes] = {}
+        self.persist_dir = persist_dir
+        if persist_dir is not None:
+            persist_dir.mkdir(parents=True, exist_ok=True)
 
     def upload_bytes(self, _client: Any, uri: str, data: bytes, _content_type: str) -> None:
         """Store bytes at a URI."""
         self.objects[uri] = data
+        self._mirror(uri, data)
 
     def upload_file(self, _client: Any, uri: str, source_path: Path) -> None:
         """Store a local file at a URI."""
-        self.objects[uri] = Path(source_path).read_bytes()
+        data = Path(source_path).read_bytes()
+        self.objects[uri] = data
+        self._mirror(uri, data)
 
     def download_bytes(self, _client: Any, uri: str) -> bytes | None:
         """Return stored bytes or None."""
@@ -60,6 +68,15 @@ class FakeGcs:
     def delete_file(self, _client: Any, uri: str) -> None:
         """Remove a stored URI if present."""
         self.objects.pop(uri, None)
+        if self.persist_dir is not None:
+            gcs_stub_blob_path(self.persist_dir, uri).unlink(missing_ok=True)
+
+    def _mirror(self, uri: str, data: bytes) -> None:
+        if self.persist_dir is None:
+            return
+        path = gcs_stub_blob_path(self.persist_dir, uri)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
 
 
 class FakeStorage(StorageService):

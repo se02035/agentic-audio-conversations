@@ -4,7 +4,7 @@ Orientation for agents changing this Python package. To *create audio*, follow [
 
 ## Stack
 
-Hatchling **src layout**, Python **>=3.11**, package `tts_audio_conversation`. Install with `uv sync --extra dev` (or `--all-extras`). Copy [`.env.example`](.env.example) to `.env` for GCP. Shared synthesis lives in `logic/`; CLI and MCP are thin adapters over `AudioConversationService`.
+Hatchling **src layout**, Python **>=3.11**, package `tts_audio_conversation`. Install with `uv sync --extra dev` (or `--extra dev --extra adk` / `--all-extras`). Copy [`.env.example`](.env.example) to `.env` for GCP. Shared synthesis lives in `logic/`; CLI, MCP, and the ADK Web adapter are thin adapters over `AudioConversationService` (ADK talks to MCP HTTP, not TTS directly).
 
 ## Where to change what
 
@@ -18,9 +18,10 @@ Hatchling **src layout**, Python **>=3.11**, package `tts_audio_conversation`. I
 - [`src/tts_audio_conversation/logic/settings.py`](src/tts_audio_conversation/logic/settings.py) — env (`GOOGLE_CLOUD_PROJECT`, `AUDIO_CONVERSATION_*`, MCP bind, OTEL)
 - [`src/tts_audio_conversation/cli/`](src/tts_audio_conversation/cli/) — Click adapter (`uv run tts-audio-conversation`)
 - [`src/tts_audio_conversation/mcp/server.py`](src/tts_audio_conversation/mcp/server.py) — FastMCP HTTP tools at `/mcp` (thin adapter; jobs live in `logic/jobs/`)
+- [`src/tts_audio_conversation/adk/`](src/tts_audio_conversation/adk/) — ADK `LlmAgent` playground (`adk web`) and REST (`adk api_server`; optional extra `google-adk>=2.0.0`)
 - [`templates/`](templates/) — long-form sample scripts (slow live tests)
-- [`tests/unit/`](tests/unit/) — **unit** (mocked GCP: logic / cli / mcp)
-- [`tests/integration/`](tests/integration/) — **live** library facade / leaf GCP
+- [`tests/unit/`](tests/unit/) — **unit** (mocked GCP: logic / cli / mcp; ADK tools/plugin/client — no `adk api_server` process)
+- [`tests/integration/`](tests/integration/) — **live** library facade / leaf GCP / real `adk api_server` (Gemini; MCP may be mocked)
 - [`tests/e2e/`](tests/e2e/) — **live** CLI + MCP HTTP adapters
 - Config: [`pyproject.toml`](pyproject.toml), [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
@@ -30,10 +31,12 @@ flowchart LR
   svc[AudioConversationService]
   cli[CLI]
   mcp[MCP_HTTP]
+  adk[ADK_Web]
   tts[EU_TTS]
   gcs[GCS]
   script --> cli
   script --> mcp
+  adk --> mcp
   cli --> svc
   mcp --> svc
   svc --> tts
@@ -49,6 +52,8 @@ uv run mypy src tests
 uv run pytest -m unit --cov=src/tts_audio_conversation --cov-fail-under=85
 ```
 
+CI installs with `uv sync --extra dev --extra adk` so the ADK↔MCP wiring tests can import `google.adk`.
+
 Format in place with `uv run ruff format .`. Optional: `uv run pre-commit run --all-files`.
 
 Ruff: line length 100, Google pydocstyle; ignores `D100`/`D104`/`D107`. Mypy is `strict`.
@@ -60,9 +65,11 @@ Markers in [`pyproject.toml`](pyproject.toml); auto-applied in [`tests/conftest.
 | Intent | Command | When |
 | --- | --- | --- |
 | Default / CI | `uv run pytest -m unit --cov=… --cov-fail-under=85` | Always after code changes |
-| Live library | `uv run pytest -m "integration and not slow"` | ADC + `.env`; billed GCP |
+| Live library + ADK | `uv run pytest -m "integration and not slow"` | ADC + `.env`; billed GCP; ADK tests spawn the real `adk api_server` REST process (Gemini; MCP may be mocked) |
 | Live adapters | `uv run pytest -m "e2e and not slow"` | ADC + staging bucket |
 | Long-form (4 tests) | `uv run pytest -m slow -n 4` | **Always** use `-n 4` (pytest-xdist); only if the user asks |
+
+ADK layers: [`tests/unit/adk/`](tests/unit/adk/) covers ingest/create tools, the LRO plugin, MCP client, and `RetryingMcpToolset` without spawning `adk api_server`. [`tests/integration/adk/`](tests/integration/adk/) always uses the real CLI (`python -m google.adk.cli api_server`). Boot smoke uses a dummy MCP URL; the Gemini LRO test uses mocked MCP HTTP + fake TTS/GCS. Pointing that same API server at live MCP is a later e2e-style suite.
 
 ### Slow / long-form (parallel)
 
@@ -88,4 +95,4 @@ Live tests skip unless those vars are set. Delete GCS blobs in `finally` unless 
 - MCP `start_conversation` may write `status.json` (`queued`) and call `list_voices`, but must return before `synthesize_speech`. Single Uvicorn worker.
 - No stale auto-fail / no TTS resume. Cancel after restart writes GCS `cancelled` only.
 - Project flag is `--project` (not `--project-id`).
-- Adapters must not call `batch_turns`, `assert_voices_*`, translator, or TTS directly — only `AudioConversationService`.
+- Adapters must not call `batch_turns`, `assert_voices_*`, translator, or TTS directly — only `AudioConversationService`. The ADK adapter additionally talks to MCP HTTP (and GCS download via the library storage helper); it must not call TTS or Translation APIs itself.

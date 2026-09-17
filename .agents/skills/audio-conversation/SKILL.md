@@ -49,6 +49,10 @@ Tools: `upload_script`, `validate_script`, `translate_script`, `start_conversati
 
 On success, `audio_uri` is the WAV blob. Download with the caller's GCS credentials.
 
+## ADK playground
+
+For an interactive Web UI (not this coding-agent skill path), install `uv sync --extra adk` and follow [`docs/creating-audio.md`](../../../docs/creating-audio.md#adk-web-agent). The ADK `LlmAgent` calls MCP HTTP only; it does not call Cloud TTS or Translation itself.
+
 ## Troubleshooting
 
 - `502` / `504`: batch over ~1500 characters. Cap is 1500; oversized turns are split.
