@@ -9,6 +9,8 @@ from tts_audio_conversation.logic.models import ConversationScript
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SKILL_ROOT = REPO_ROOT / "skills" / "audio-conversation"
 SKILL_MD = SKILL_ROOT / "SKILL.md"
+LOCAL_DESKTOP = SKILL_ROOT / "references" / "local-desktop.md"
+GEMINI_ENTERPRISE = SKILL_ROOT / "references" / "gemini-enterprise.md"
 
 _FINGERPRINT = (
     "upload_script",
@@ -30,6 +32,8 @@ def test_skill_md_has_playbook_and_stays_short() -> None:
     assert "tts-audio-conversation" in text
     assert "Never start" in text or "never start" in text
     assert "npx skills add se02035/agentic-audio-conversations" in text
+    assert "local-desktop.md" in text
+    assert "gemini-enterprise.md" in text
 
 
 def test_skill_md_does_not_ask_for_mcp_url() -> None:
@@ -49,7 +53,7 @@ def test_skill_md_selects_server_by_fingerprint() -> None:
     assert "prefer" in text.lower()
     assert "tts-audio-conversation" in text
     assert "server name" in text.lower()
-    assert "gcloud storage" in text
+    assert "gcloud storage" not in text
 
 
 def test_skill_md_forbids_python_cli_fallback() -> None:
@@ -82,12 +86,36 @@ def test_skill_has_no_scripts_directory() -> None:
     assert not (SKILL_ROOT / "scripts").exists()
     assert (SKILL_ROOT / "references" / "mcp-tools.md").is_file()
     assert (SKILL_ROOT / "references" / "script-schema.md").is_file()
+    assert LOCAL_DESKTOP.is_file()
+    assert GEMINI_ENTERPRISE.is_file()
     for path in SKILL_ROOT.rglob("*"):
         if not path.is_file() or path.suffix not in {".py", ".md"}:
             continue
         body = path.read_text(encoding="utf-8")
         assert "mcp_audio.py" not in body
         assert "--mcp-url" not in body
+
+
+def test_local_desktop_host_file_keeps_gcloud_and_tasks() -> None:
+    """Desktop wait/download stays in the host file, not SKILL.md."""
+    text = LOCAL_DESKTOP.read_text(encoding="utf-8")
+    assert "gcloud storage objects describe" in text
+    assert "gcloud storage cp" in text
+    assert "/tasks" in text
+    assert "local WAV path" in text.lower() or "local wav path" in text.lower()
+
+
+def test_gemini_enterprise_host_file_skips_gcloud_and_local_wav() -> None:
+    """GE assistant finishes on gs:// and must not treat missing gcloud as a stop."""
+    text = GEMINI_ENTERPRISE.read_text(encoding="utf-8")
+    lower = text.lower()
+    plain = lower.replace("*", "")
+    assert "do not run `gcloud`" in plain or "do not run gcloud" in plain
+    assert "not a reason to refuse" in plain
+    assert "audio_uri" in text
+    assert "gs://" in text
+    assert "local wav" in lower or "local path" in lower
+    assert "zip root" in lower
 
 
 def test_skill_sample_scripts_are_schema_valid() -> None:

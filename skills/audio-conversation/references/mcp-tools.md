@@ -2,7 +2,7 @@
 
 The harness must already connect this server. The skill never collects a URL. FastMCP `tasks=False`: there is no MCP task API. Long-running work is a **job** (`job_id` + `get_conversation_status`).
 
-Bind the server whose tools include all six names below (prefer configured name `tts-audio-conversation`). Hosts may prefix tool names; match the suffix. Call order lives in `SKILL.md`.
+Bind the server whose tools include all six names below (prefer configured name `tts-audio-conversation`). Hosts may prefix tool names or expose them as connector actions; match the suffix. Call order lives in `SKILL.md`.
 
 Load this file when a payload is unexpected.
 
@@ -85,27 +85,6 @@ Returns a `JobRecord`. Cooperative: the current TTS batch may finish; later batc
 
 ## No download tool
 
-Create/start/status go through MCP tools in the harness, not the Python CLI.
+Create/start/status go through MCP tools (or Gemini Enterprise connector actions) in the harness, not the Python CLI. There is no MCP `download` tool.
 
-Copy `audio_uri` with ADC:
-
-```bash
-gcloud storage objects describe gs://bucket/path/script.yaml
-gcloud storage cp gs://bucket/path/audio.wav ./out.wav
-```
-
-## Harness MCP wiring (not this skill)
-
-Operators attach HTTP MCP themselves. Use **`serverUrl`** (not `url` / `httpUrl`). Preferred server key: `tts-audio-conversation`.
-
-```json
-{
-  "mcpServers": {
-    "tts-audio-conversation": {
-      "serverUrl": "http://127.0.0.1:8000/mcp"
-    }
-  }
-}
-```
-
-Do not write this file from the skill. Never start the MCP process.
+Desktop copy of `audio_uri` with ADC: [local-desktop.md](local-desktop.md). Gemini Enterprise reports the `gs://` URI: [gemini-enterprise.md](gemini-enterprise.md). Never start the MCP process.

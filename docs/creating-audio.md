@@ -2,7 +2,7 @@
 
 How to set up GCP, write a script, and produce a WAV via the CLI, the MCP server, or the ADK Web agent.
 
-Agent skill (harness MCP playbook, install with `npx skills add se02035/agentic-audio-conversations` or `npx skills add ./skills/audio-conversation`): [`skills/audio-conversation/SKILL.md`](../skills/audio-conversation/SKILL.md). Attach the conversation MCP in the agent harness (`tts-audio-conversation`); the skill does not collect a URL. Library facade: [`library-api.md`](library-api.md). Why the APIs look this way: [`gcp-design.md`](gcp-design.md). Batching and stitching: [`synthesis.md`](synthesis.md). The Python CLI in this package is unchanged.
+Agent skill (harness MCP playbook, install with `npx skills add se02035/agentic-audio-conversations` or `npx skills add ./skills/audio-conversation`; Gemini Enterprise: zip `skills/audio-conversation` with `SKILL.md` at the zip root and upload in the Skills UI): [`skills/audio-conversation/SKILL.md`](../skills/audio-conversation/SKILL.md). Attach the conversation MCP in the agent harness or as a Gemini Enterprise custom MCP connector (`tts-audio-conversation`); the skill does not collect a URL. Desktop hosts copy WAV objects with `gcloud storage`; the Gemini Enterprise assistant reports `gs://` `audio_uri`. Library facade: [`library-api.md`](library-api.md). Why the APIs look this way: [`gcp-design.md`](gcp-design.md). Batching and stitching: [`synthesis.md`](synthesis.md). The Python CLI in this package is unchanged.
 
 ## Setup
 
@@ -96,7 +96,7 @@ uv run tts-audio-conversation-mcp
 
 Jobs run concurrently (`AUDIO_CONVERSATION_MAX_CONCURRENT_JOBS`, default 4). Extra jobs stay `queued`. One Uvicorn worker — do not scale the process horizontally.
 
-The agent skill [`skills/audio-conversation/SKILL.md`](../skills/audio-conversation/SKILL.md) calls these tools through an already-connected harness server (preferred name `tts-audio-conversation`) and copies WAV objects with `gcloud storage`. It does not start this process.
+The agent skill [`skills/audio-conversation/SKILL.md`](../skills/audio-conversation/SKILL.md) calls these tools through an already-connected harness server or Gemini Enterprise connector (preferred name `tts-audio-conversation`). Desktop hosts copy WAV objects with `gcloud storage`; Gemini Enterprise reports `gs://` `audio_uri`. It does not start this process. Host details: [`skills/audio-conversation/references/local-desktop.md`](../skills/audio-conversation/references/local-desktop.md) and [`skills/audio-conversation/references/gemini-enterprise.md`](../skills/audio-conversation/references/gemini-enterprise.md).
 
 ## ADK Web agent
 

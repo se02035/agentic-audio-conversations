@@ -80,7 +80,7 @@ sequenceDiagram
 | [`docs/synthesis.md`](docs/synthesis.md) | Batching, stitching, Companion voice, retries |
 | [`docs/gcp-design.md`](docs/gcp-design.md) | Why these GCP APIs and EU endpoints |
 | [`AGENTS.md`](AGENTS.md) | Layout, quality gate, which tests to run |
-| [`skills/audio-conversation/SKILL.md`](skills/audio-conversation/SKILL.md) | Agent skill (`npx skills add`); needs harness MCP `tts-audio-conversation` |
+| [`skills/audio-conversation/SKILL.md`](skills/audio-conversation/SKILL.md) | Agent skill (`npx skills add` or Gemini Enterprise ZIP upload); needs harness MCP or GE connector `tts-audio-conversation` |
 
 ## Develop
 
