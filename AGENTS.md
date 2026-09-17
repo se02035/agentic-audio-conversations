@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Orientation for agents changing this Python package. To *create audio*, follow [`.agents/skills/audio-conversation/SKILL.md`](.agents/skills/audio-conversation/SKILL.md) and [`docs/creating-audio.md`](docs/creating-audio.md). Library facade: [`docs/library-api.md`](docs/library-api.md). Design rationale: [`docs/gcp-design.md`](docs/gcp-design.md). Synthesis batching: [`docs/synthesis.md`](docs/synthesis.md). Overview: [`README.md`](README.md).
+Orientation for agents changing this Python package. To *create audio*, follow [`skills/audio-conversation/SKILL.md`](skills/audio-conversation/SKILL.md) (MCP playbook for a harness that already has `tts-audio-conversation` connected; also linked from `.agents/skills/audio-conversation`) and [`docs/creating-audio.md`](docs/creating-audio.md). Library facade: [`docs/library-api.md`](docs/library-api.md). Design rationale: [`docs/gcp-design.md`](docs/gcp-design.md). Synthesis batching: [`docs/synthesis.md`](docs/synthesis.md). Overview: [`README.md`](README.md).
 
 ## Stack
 
@@ -20,6 +20,7 @@ Hatchling **src layout**, Python **>=3.11**, package `tts_audio_conversation`. I
 - [`src/tts_audio_conversation/mcp/server.py`](src/tts_audio_conversation/mcp/server.py) — FastMCP HTTP tools at `/mcp` (thin adapter; jobs live in `logic/jobs/`)
 - [`src/tts_audio_conversation/adk/`](src/tts_audio_conversation/adk/) — ADK `LlmAgent` playground (`adk web`) and REST (`adk api_server`; optional extra `google-adk>=2.0.0`)
 - [`templates/`](templates/) — long-form sample scripts (slow live tests)
+- [`skills/audio-conversation/`](skills/audio-conversation/) — installable Agent Skill (harness MCP playbook; symlink at `.agents/skills/audio-conversation`)
 - [`tests/unit/`](tests/unit/) — **unit** (mocked GCP: logic / cli / mcp; ADK tools/plugin/client — no `adk api_server` process)
 - [`tests/integration/`](tests/integration/) — **live** library facade / leaf GCP / real `adk api_server` (Gemini; MCP may be mocked)
 - [`tests/e2e/`](tests/e2e/) — **live** CLI + MCP HTTP adapters

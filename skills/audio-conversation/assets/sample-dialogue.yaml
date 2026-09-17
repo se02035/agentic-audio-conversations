@@ -1,0 +1,38 @@
+metadata:
+  title: Cloud TTS in the EU
+  description: Short two-speaker audio overview of Chirp 3 HD conversation synthesis.
+  language_code: en-US
+  audio_encoding: LINEAR16
+  sample_rate_hertz: 24000
+voices:
+  Host:
+    name: en-US-Chirp3-HD-Fenrir
+    language_code: en-US
+  Guest:
+    name: en-US-Chirp3-HD-Aoede
+    language_code: en-US
+turns:
+  - speaker: Host
+    text: Welcome to a short audio overview. Today we look at Cloud text to speech in the EU.
+    pause_after_ms: 300
+  - speaker: Guest
+    text: Thanks for having me. The idea is a two-speaker conversation that still sounds natural.
+    pause_after_ms: 300
+  - speaker: Host
+    text: Chirp 3 HD voices handle the dialogue. Each speaker keeps a consistent persona across turns.
+    pause_after_ms: 250
+  - speaker: Guest
+    text: And the synthesis itself runs on the EU regional endpoint, which matters for data residency.
+    pause_after_ms: 300
+  - speaker: Host
+    text: Scripts stay simple. You declare metadata, map each speaker to a voice, then list the turns in order.
+    pause_after_ms: 250
+  - speaker: Guest
+    text: Keep the spoken lines short. Long episodes are batched under the hood, so you do not write one giant turn.
+    pause_after_ms: 300
+  - speaker: Host
+    text: A brief pause after each turn helps the conversation breathe when the audio is stitched together.
+    pause_after_ms: 250
+  - speaker: Guest
+    text: That is the shape to copy. Rewrite the topic and the turns, and keep this skeleton.
+    pause_after_ms: 200

@@ -1,0 +1,29 @@
+metadata:
+  title: Cloud TTS narration
+  description: Short single-speaker overview of Chirp 3 HD narration in the EU.
+  language_code: en-US
+  audio_encoding: LINEAR16
+  sample_rate_hertz: 24000
+voices:
+  Narrator:
+    name: en-US-Chirp3-HD-Fenrir
+    language_code: en-US
+turns:
+  - speaker: Narrator
+    text: This is a short spoken overview of Cloud text to speech for narration.
+    pause_after_ms: 300
+  - speaker: Narrator
+    text: One speaker is enough. Declare a single Narrator voice and write the turns in listening order.
+    pause_after_ms: 300
+  - speaker: Narrator
+    text: Chirp 3 HD provides the voice. Match the voice language code to the episode language.
+    pause_after_ms: 250
+  - speaker: Narrator
+    text: Synthesis runs on the EU regional endpoint. Keep each turn as spoken sentences, not headings or stage directions.
+    pause_after_ms: 300
+  - speaker: Narrator
+    text: A short pause after each turn gives the listener a beat when the audio is stitched.
+    pause_after_ms: 250
+  - speaker: Narrator
+    text: Copy this skeleton, rewrite the topic, and leave the unused companion voice to the server.
+    pause_after_ms: 200
