@@ -9,24 +9,25 @@ from typing import Any
 
 import pytest
 from dotenv import load_dotenv
-from google.auth.exceptions import DefaultCredentialsError
-
-from tests.integration.adk.api_server import ADK_APP_NAME
-from tests.integration.adk.stack import AdkAgentStack
-from tests.unit.adk.api_events import (
-    artifact_delta_filenames,
-    function_call_names,
-    function_responses,
-    inline_file_part,
-)
-from tts_audio_conversation.adk.config import example_script_path
-from tts_audio_conversation.adk.create_audio import CREATE_AUDIO_TOOL_NAME
-from tts_audio_conversation.logic.jobs.models import JobStatus
 
 load_dotenv()
 
 pytest.importorskip("google.adk")
 pytest.importorskip("httpx")
+
+from google.auth.exceptions import DefaultCredentialsError  # noqa: E402
+
+from tests.integration.adk.api_server import ADK_APP_NAME  # noqa: E402
+from tests.integration.adk.stack import AdkAgentStack  # noqa: E402
+from tests.unit.adk.api_events import (  # noqa: E402
+    artifact_delta_filenames,
+    function_call_names,
+    function_responses,
+    inline_file_part,
+)
+from tts_audio_conversation.adk.config import example_script_path  # noqa: E402
+from tts_audio_conversation.adk.create_audio import CREATE_AUDIO_TOOL_NAME  # noqa: E402
+from tts_audio_conversation.logic.jobs.models import JobStatus  # noqa: E402
 
 
 def _require_gemini_adc() -> None:

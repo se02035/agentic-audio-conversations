@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 from tts_audio_conversation.adk.job_poll import (
@@ -98,3 +100,21 @@ async def test_wait_for_terminal_job_times_out() -> None:
             timeout_sec=0.0,
             sleep=fake_sleep,
         )
+
+
+async def test_wait_for_terminal_job_enforces_wall_clock_deadline() -> None:
+    """A hung ``get_status`` is aborted by ``asyncio.timeout``, not the interval counter."""
+
+    async def hang(_job_id: str) -> dict[str, str]:
+        await asyncio.Event().wait()
+        return {"job_id": "j1", "status": "running"}
+
+    with pytest.raises(JobPollTimeout) as exc_info:
+        await wait_for_terminal_job(
+            hang,
+            "j1",
+            interval_sec=60,
+            timeout_sec=0.05,
+        )
+    assert exc_info.value.job_id == "j1"
+    assert exc_info.value.timeout_sec == 0.05

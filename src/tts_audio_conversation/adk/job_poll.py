@@ -71,24 +71,33 @@ async def wait_for_terminal_job(
         get_status: Async callable returning a job snapshot dict.
         job_id: MCP job id from ``start_conversation``.
         interval_sec: Delay between polls.
-        timeout_sec: Maximum wait (plugin-side; not an ADK tool timeout).
+        timeout_sec: Wall-clock deadline covering sleeps and ``get_status``
+            (plugin-side; not an ADK tool timeout). The interval counter is
+            also applied so an injected sleeper can still expire the wait.
         sleep: Injected sleeper for tests (defaults to ``asyncio.sleep``).
 
     Returns:
         The first terminal job snapshot as a plain dict.
 
     Raises:
-        JobPollTimeout: When the deadline is exceeded while still queued/running.
+        JobPollTimeout: When the wall-clock or interval-counter deadline is exceeded
+            while still queued/running.
     """
     sleeper = sleep or asyncio.sleep
-    snapshot = dict(await get_status(job_id))
-    if is_terminal_status(snapshot.get("status")):
-        return snapshot
-    elapsed = 0.0
-    while elapsed < timeout_sec:
-        await sleeper(interval_sec)
-        elapsed += interval_sec
-        snapshot = dict(await get_status(job_id))
-        if is_terminal_status(snapshot.get("status")):
-            return snapshot
+    try:
+        async with asyncio.timeout(timeout_sec):
+            snapshot = dict(await get_status(job_id))
+            if is_terminal_status(snapshot.get("status")):
+                return snapshot
+            elapsed = 0.0
+            while elapsed < timeout_sec:
+                await sleeper(interval_sec)
+                elapsed += interval_sec
+                snapshot = dict(await get_status(job_id))
+                if is_terminal_status(snapshot.get("status")):
+                    return snapshot
+    except TimeoutError as exc:
+        if isinstance(exc, JobPollTimeout):
+            raise
+        raise JobPollTimeout(job_id, timeout_sec) from None
     raise JobPollTimeout(job_id, timeout_sec)

@@ -19,6 +19,7 @@ from tts_audio_conversation.adk.artifact_ids import (  # noqa: E402
     script_artifact_name,
 )
 from tts_audio_conversation.adk.ingest import (  # noqa: E402
+    bind_ingest_uploaded_script,
     ingest_uploaded_script,
     yaml_bytes_from_part,
 )
@@ -158,5 +159,27 @@ async def test_two_ingests_mint_distinct_script_artifacts() -> None:
         )
         assert first["script_artifact"] != second["script_artifact"]
         assert first["script_id"] != second["script_id"]
+    finally:
+        configure_mcp_client(None)
+
+
+async def test_bound_ingest_uses_injected_client_not_process_override(
+    sample_script_yaml: str,
+) -> None:
+    """``bind_ingest_uploaded_script`` ignores the process-wide MCP client."""
+    injected = AsyncMock()
+    injected.upload_script = AsyncMock(
+        return_value={"script_id": "sid-bound", "script_uri": "gs://b/s.yaml"}
+    )
+    other = AsyncMock()
+    configure_mcp_client(other)
+    try:
+        tool = bind_ingest_uploaded_script(injected)
+        ctx = FakeToolContext({"script.yaml": yaml_part(sample_script_yaml.encode("utf-8"))})
+        result = await tool(ctx)  # type: ignore[arg-type]
+        assert result["status"] == "ok"
+        assert result["script_id"] == "sid-bound"
+        injected.upload_script.assert_awaited_once()
+        other.upload_script.assert_not_called()
     finally:
         configure_mcp_client(None)

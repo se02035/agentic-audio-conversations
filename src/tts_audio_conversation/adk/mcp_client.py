@@ -30,6 +30,7 @@ EXCLUDED_MCP_TOOLS = (
     "upload_script",
     "translate_script",
 )
+_NON_IDEMPOTENT_MCP_TOOLS = frozenset({"upload_script", "start_conversation"})
 
 _RETRYABLE_TYPE_NAMES = frozenset(
     {
@@ -184,10 +185,19 @@ class McpConversationClient:
         return await self.call_tool("validate_script", {"script_uri": script_uri})
 
     async def start_conversation(self, script_uri: str) -> dict[str, Any]:
-        """Start synthesis and return immediately (``queued`` / ``running``)."""
+        """Start synthesis and return immediately (``queued`` / ``running``).
+
+        Raises:
+            McpClientError: When the start response has a missing or falsey ``job_id``.
+        """
         started = await self.call_tool("start_conversation", {"script_uri": script_uri})
+        job_id = started.get("job_id")
+        if not job_id:
+            raise McpClientError(
+                "start_conversation returned no job_id; cannot start or poll synthesis."
+            )
         return {
-            "job_id": str(started.get("job_id") or ""),
+            "job_id": str(job_id),
             "status": str(started.get("status") or "queued"),
             "script_uri": str(started.get("script_uri") or script_uri),
             "audio_uri": str(started.get("audio_uri") or ""),
@@ -208,14 +218,26 @@ class McpConversationClient:
         return self._download_bytes_fn(audio_uri)
 
     async def call_tool(self, name: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        """Call an MCP tool, retrying while the HTTP server is coming up."""
+        """Call an MCP tool, retrying connect failures while the HTTP server is coming up.
+
+        ``upload_script`` and ``start_conversation`` are not retried after
+        ``call_tool`` has been dispatched (they are not idempotent). Connect
+        failures that occur before the tool RPC still retry.
+        """
         payload = dict(arguments)
         last_exc: Exception | None = None
         delay = self._connect_retry_delay_sec
         for attempt in range(self._connect_attempts):
             try:
                 async with Client(self._url) as client:
-                    result = await client.call_tool(name, payload)
+                    try:
+                        result = await client.call_tool(name, payload)
+                    except Exception as dispatch_exc:
+                        if name in _NON_IDEMPOTENT_MCP_TOOLS:
+                            raise McpClientError(
+                                f"MCP tool '{name}' failed: {dispatch_exc}"
+                            ) from dispatch_exc
+                        raise
                 return unwrap_tool_data(result)
             except McpClientError:
                 raise

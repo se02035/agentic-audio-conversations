@@ -20,6 +20,7 @@ from tts_audio_conversation.adk.artifact_ids import (  # noqa: E402
 )
 from tts_audio_conversation.adk.create_audio import (  # noqa: E402
     CREATE_AUDIO_TOOL_NAME,
+    bind_create_audio_conversation,
     create_audio_conversation,
 )
 from tts_audio_conversation.adk.mcp_client import configure_mcp_client  # noqa: E402
@@ -51,8 +52,10 @@ async def test_create_returns_queued_and_records_pending_lro() -> None:
         assert pending["function_call_id"] == "fc-create"
         assert pending["tool_name"] == CREATE_AUDIO_TOOL_NAME
         assert pending["job_id"] == "job-9"
+        assert pending["script_id"] == "sid"
         overviews = ctx.state[OVERVIEWS_STATE_KEY]
         assert overviews[0]["job_id"] == "job-9"
+        assert overviews[0]["script_id"] == "sid"
         assert audio_artifact_name("job-9", "en-US") != "audio.wav"
         client.start_conversation.assert_awaited_once_with("gs://b/s.yaml")
     finally:
@@ -107,5 +110,31 @@ async def test_two_creates_use_distinct_job_ids() -> None:
         assert audio_artifact_name(first["job_id"], "en-US") != audio_artifact_name(
             second["job_id"], "en-US"
         )
+    finally:
+        configure_mcp_client(None)
+
+
+async def test_bound_create_uses_injected_client_not_process_override() -> None:
+    """``bind_create_audio_conversation`` ignores the process-wide MCP client."""
+    injected = AsyncMock()
+    injected.start_conversation = AsyncMock(
+        return_value={
+            "job_id": "job-bound",
+            "status": "queued",
+            "script_uri": "gs://b/s.yaml",
+            "audio_uri": "",
+        }
+    )
+    other = AsyncMock()
+    configure_mcp_client(other)
+    try:
+        tool = bind_create_audio_conversation(injected)
+        result = await tool(
+            "gs://b/s.yaml",
+            FakeToolContext({}, function_call_id="fc-bound"),  # type: ignore[arg-type]
+        )
+        assert result["job_id"] == "job-bound"
+        injected.start_conversation.assert_awaited_once_with("gs://b/s.yaml")
+        other.start_conversation.assert_not_called()
     finally:
         configure_mcp_client(None)

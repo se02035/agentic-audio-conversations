@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from functools import wraps
 from typing import Any
 
 from google.adk.tools.tool_context import ToolContext
@@ -17,7 +19,7 @@ from .artifact_ids import (
     script_artifact_name,
     upsert_audio_overview,
 )
-from .mcp_client import get_mcp_client, language_code_from_script
+from .mcp_client import McpConversationClient, get_mcp_client, language_code_from_script
 
 
 def yaml_bytes_from_part(part: types.Part) -> bytes:
@@ -36,6 +38,26 @@ async def ingest_uploaded_script(tool_context: ToolContext) -> dict[str, Any]:
     Returns:
         ``status``, ``script_uri``, ``script_id``, and ``script_artifact``.
     """
+    return await _ingest_uploaded_script(tool_context, get_mcp_client())
+
+
+def bind_ingest_uploaded_script(
+    client: McpConversationClient,
+) -> Callable[[ToolContext], Awaitable[dict[str, Any]]]:
+    """Return an ingest tool that always uses ``client`` (not a process-wide override)."""
+
+    @wraps(ingest_uploaded_script)
+    async def bound(tool_context: ToolContext) -> dict[str, Any]:
+        return await _ingest_uploaded_script(tool_context, client)
+
+    return bound
+
+
+async def _ingest_uploaded_script(
+    tool_context: ToolContext,
+    client: McpConversationClient,
+) -> dict[str, Any]:
+    """Upload the latest YAML artifact through ``client`` and record session state."""
     names = await tool_context.list_artifacts()
     filename = pick_uploaded_yaml_name(names)
     if filename is None:
@@ -54,7 +76,6 @@ async def ingest_uploaded_script(tool_context: ToolContext) -> dict[str, Any]:
         text = yaml_bytes.decode("utf-8")
     except (ValueError, UnicodeDecodeError) as exc:
         return {"status": "error", "error": str(exc)}
-    client = get_mcp_client()
     uploaded = await client.upload_script(text)
     script_id = str(uploaded.get("script_id") or "")
     script_uri = str(uploaded.get("script_uri") or "")

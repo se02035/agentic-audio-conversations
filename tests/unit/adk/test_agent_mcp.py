@@ -31,11 +31,13 @@ async def test_start_returns_queued_without_waiting(
         uploaded = await client.upload_script(sample_script_yaml)
         t0 = time.perf_counter()
         job = await client.start_conversation(uploaded["script_uri"])
-        elapsed = time.perf_counter() - t0
-        assert elapsed < 1.0
-        assert job["status"] in {JobStatus.queued.value, JobStatus.running.value}
-        assert job["job_id"]
-        assert await asyncio.to_thread(started.wait, 3)
-        status = await client.get_conversation_status(job["job_id"])
-        assert status["status"] in {JobStatus.queued.value, JobStatus.running.value}
-        release.set()
+        try:
+            elapsed = time.perf_counter() - t0
+            assert elapsed < 1.0
+            assert job["status"] in {JobStatus.queued.value, JobStatus.running.value}
+            assert job["job_id"]
+            assert await asyncio.to_thread(started.wait, 3)
+            status = await client.get_conversation_status(job["job_id"])
+            assert status["status"] in {JobStatus.queued.value, JobStatus.running.value}
+        finally:
+            release.set()

@@ -89,6 +89,7 @@ async def mocked_mcp_http(
         server.should_exit = True
         try:
             await asyncio.wait_for(serve_task, timeout=15)
-        except (TimeoutError, asyncio.CancelledError):
+        except TimeoutError:
             serve_task.cancel()
-        await service.close()
+        finally:
+            await service.close()

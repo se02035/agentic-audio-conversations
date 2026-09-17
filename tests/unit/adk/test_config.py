@@ -5,8 +5,10 @@ from __future__ import annotations
 import os
 
 import pytest
+from pydantic import ValidationError
 
 from tts_audio_conversation.adk.config import (
+    AgentSettings,
     apply_gemini_runtime_env,
     example_script_path,
     instruction_text,
@@ -38,3 +40,14 @@ def test_apply_gemini_runtime_env_defaults_global(monkeypatch: pytest.MonkeyPatc
     assert os.environ["GOOGLE_CLOUD_LOCATION"] == "global"
     assert os.environ["GOOGLE_GENAI_USE_ENTERPRISE"] == "true"
     assert os.environ["GOOGLE_GENAI_USE_VERTEXAI"] == "true"
+
+
+def test_llm_retry_delays_must_be_greater_than_zero() -> None:
+    """Retry delay knobs reject zero while keeping positive defaults."""
+    with pytest.raises(ValidationError):
+        AgentSettings(adk_llm_retry_initial_delay=0)
+    with pytest.raises(ValidationError):
+        AgentSettings(adk_llm_retry_max_delay=0)
+    settings = AgentSettings()
+    assert settings.adk_llm_retry_initial_delay == 1.0
+    assert settings.adk_llm_retry_max_delay == 16.0

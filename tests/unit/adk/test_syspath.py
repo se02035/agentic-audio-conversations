@@ -11,10 +11,10 @@ from tts_audio_conversation.adk._syspath import unshadow_mcp_sdk
 def test_unshadow_mcp_sdk_removes_adk_parent() -> None:
     """The folder that contains this repo's ``mcp/`` adapter is dropped from sys.path."""
     parent = str(Path(unshadow_mcp_sdk.__code__.co_filename).resolve().parent.parent)
+    original = list(sys.path)
     sys.path.insert(0, parent)
     try:
         unshadow_mcp_sdk()
         assert parent not in sys.path
     finally:
-        if parent in sys.path:
-            sys.path.remove(parent)
+        sys.path[:] = original

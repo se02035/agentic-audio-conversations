@@ -64,8 +64,8 @@ class AgentSettings(BaseSettings):
 
     adk_agent_model: str = Field(default=DEFAULT_MODEL)
     adk_llm_retry_attempts: int = Field(default=5, ge=1)
-    adk_llm_retry_initial_delay: float = Field(default=1.0, ge=0.0)
-    adk_llm_retry_max_delay: float = Field(default=16.0, ge=0.0)
+    adk_llm_retry_initial_delay: float = Field(default=1.0, gt=0.0)
+    adk_llm_retry_max_delay: float = Field(default=16.0, gt=0.0)
     audio_conversation_mcp_url: str = Field(default=DEFAULT_MCP_URL)
     audio_conversation_job_poll_interval_sec: float = Field(default=5.0, gt=0.0)
     audio_conversation_job_poll_timeout_sec: float = Field(default=1800.0, gt=0.0)

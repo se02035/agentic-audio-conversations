@@ -9,6 +9,7 @@ import pytest
 
 from tts_audio_conversation.adk.config import AgentSettings
 from tts_audio_conversation.adk.job_poll import JobPollTimeout
+from tts_audio_conversation.adk.mcp_client import McpClientError
 from tts_audio_conversation.logic.jobs.models import JobStatus
 
 pytest.importorskip("google.adk")
@@ -81,6 +82,23 @@ async def test_terminal_payload_timeout_becomes_failed(
     assert name is None
     assert payload["status"] == "failed"
     assert "job-x" in str(payload["error"])
+
+
+async def test_terminal_payload_mcp_error_becomes_failed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MCP status failures are returned as a failed FunctionResponse payload."""
+
+    async def boom(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise McpClientError("MCP tool 'get_conversation_status' failed: down")
+
+    monkeypatch.setattr("tts_audio_conversation.adk.lro_plugin.wait_for_terminal_job", boom)
+    plugin = _plugin(_StubClient({"job_id": "job-x", "status": "queued"}))
+    payload, wav, name = await plugin._terminal_payload({"job_id": "job-x"})
+    assert wav is None
+    assert name is None
+    assert payload["status"] == "failed"
+    assert "down" in str(payload["error"])
 
 
 async def test_after_tool_callback_records_function_call_id() -> None:
@@ -195,7 +213,7 @@ async def test_save_wav_and_resume_send_matching_function_response(
     ctx.app_name = "adk"
     ctx.user_id = "user"
     ctx.session.id = "sess"
-    ctx.session.state = {"audio_overviews": [], "latest_script_id": "sid"}
+    ctx.session.state = {"audio_overviews": [], "latest_script_id": "newer-sid"}
     ctx.session_service = MagicMock()
     ctx.artifact_service = MagicMock()
     ctx.artifact_service.save_artifact = AsyncMock(return_value=1)
@@ -204,6 +222,8 @@ async def test_save_wav_and_resume_send_matching_function_response(
     pending = {
         "job_id": "job-1",
         "function_call_id": "fc-1",
+        "script_id": "captured-sid",
+        "script_uri": "gs://b/s.yaml",
         "script_artifact": "script_sid.yaml",
         "language_code": "en-US",
         "status": "queued",
@@ -219,6 +239,10 @@ async def test_save_wav_and_resume_send_matching_function_response(
     pending_state = captured[0]["state_delta"]["pending_audio_lro"]
     assert pending_state["audio_artifact"] == "audio_job-1_en-US.wav"
     assert pending_state["audio_artifact_version"] == 1
+    overview = captured[0]["state_delta"]["audio_overviews"][-1]
+    assert overview["script_id"] == "captured-sid"
+    assert overview["script_uri"] == "gs://b/s.yaml"
+    assert overview["script_artifact"] == "script_sid.yaml"
 
 
 async def test_before_agent_copies_wav_version_to_artifact_delta() -> None:

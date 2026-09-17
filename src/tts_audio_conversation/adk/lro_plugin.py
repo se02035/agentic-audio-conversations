@@ -33,7 +33,7 @@ from .job_poll import (
     terminal_function_response,
     wait_for_terminal_job,
 )
-from .mcp_client import McpConversationClient
+from .mcp_client import McpClientError, McpConversationClient
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +228,7 @@ class ConversationJobClientPlugin(BasePlugin):
                 interval_sec=self._settings.audio_conversation_job_poll_interval_sec,
                 timeout_sec=self._settings.audio_conversation_job_poll_timeout_sec,
             )
-        except JobPollTimeout as exc:
+        except (JobPollTimeout, McpClientError) as exc:
             failed = {
                 "job_id": job_id,
                 "status": JobStatus.failed.value,
@@ -242,7 +242,11 @@ class ConversationJobClientPlugin(BasePlugin):
         download_error: str | None = None
         if str(job.get("status")) == JobStatus.succeeded.value:
             audio_uri = str(job.get("audio_uri") or "")
-            wav_bytes = self._client.download_audio(audio_uri) if audio_uri else None
+            wav_bytes = (
+                await asyncio.to_thread(self._client.download_audio, audio_uri)
+                if audio_uri
+                else None
+            )
             if wav_bytes:
                 audio_name = audio_artifact_name(job_id, language_code)
             else:
@@ -292,8 +296,8 @@ class ConversationJobClientPlugin(BasePlugin):
         function_call_id = str(pending["function_call_id"])
         tool_name = str(pending.get("tool_name") or CREATE_AUDIO_TOOL_NAME)
         overview = {
-            "script_id": invocation_context.session.state.get("latest_script_id"),
-            "script_uri": payload.get("script_uri"),
+            "script_id": pending.get("script_id"),
+            "script_uri": pending.get("script_uri") or payload.get("script_uri"),
             "script_artifact": pending.get("script_artifact"),
             "job_id": payload.get("job_id"),
             "audio_artifact": payload.get("audio_artifact"),

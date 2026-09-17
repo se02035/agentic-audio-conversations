@@ -25,10 +25,10 @@ from .config import (
     instruction_text,
     load_repo_dotenv,
 )
-from .create_audio import create_audio_conversation
-from .ingest import ingest_uploaded_script
+from .create_audio import bind_create_audio_conversation
+from .ingest import bind_ingest_uploaded_script
 from .lro_plugin import ConversationJobClientPlugin
-from .mcp_client import LLM_VISIBLE_MCP_TOOLS, McpConversationClient, configure_mcp_client
+from .mcp_client import LLM_VISIBLE_MCP_TOOLS, McpConversationClient
 from .mcp_toolset import RetryingMcpToolset
 
 APP_NAME = "adk"
@@ -79,7 +79,6 @@ def build_app(
         cfg.audio_conversation_mcp_url,
         download_bytes_fn=download_bytes_fn,
     )
-    configure_mcp_client(client)
     lro_plugin = ConversationJobClientPlugin(settings=cfg, client=client)
     mcp_toolset = RetryingMcpToolset(
         connection_params=StreamableHTTPConnectionParams(
@@ -93,8 +92,8 @@ def build_app(
         model=build_gemini(cfg),
         instruction=instruction_text(),
         tools=[
-            ingest_uploaded_script,
-            LongRunningFunctionTool(create_audio_conversation),
+            bind_ingest_uploaded_script(client),
+            LongRunningFunctionTool(bind_create_audio_conversation(client)),
             mcp_toolset,
         ],
     )

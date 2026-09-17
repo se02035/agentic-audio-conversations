@@ -137,6 +137,84 @@ async def test_call_tool_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) 
     assert attempts["n"] == 3
 
 
+async def test_start_conversation_rejects_missing_job_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A start response without ``job_id`` is rejected before the LRO pending flow."""
+    client = McpConversationClient("http://127.0.0.1:9/mcp")
+
+    async def fake_call(_name: str, _arguments: dict[str, str]) -> dict[str, str]:
+        return {"job_id": "", "status": "queued", "script_uri": "gs://b/s.yaml"}
+
+    monkeypatch.setattr(client, "call_tool", fake_call)
+    with pytest.raises(McpClientError, match="job_id"):
+        await client.start_conversation("gs://b/s.yaml")
+
+
+async def test_call_tool_does_not_retry_start_after_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Non-idempotent tools are not retried once ``call_tool`` has been sent."""
+    attempts = {"n": 0}
+
+    class _FakeClient:
+        def __init__(self, _url: str) -> None:
+            pass
+
+        async def __aenter__(self) -> _FakeClient:
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+        async def call_tool(self, name: str, payload: dict[str, str]) -> MagicMock:
+            _ = payload
+            attempts["n"] += 1
+            assert name == "start_conversation"
+            raise ConnectionError("lost after send")
+
+    monkeypatch.setattr("tts_audio_conversation.adk.mcp_client.Client", _FakeClient)
+    client = McpConversationClient(
+        "http://127.0.0.1:9/mcp",
+        connect_attempts=5,
+        connect_retry_delay_sec=0.0,
+    )
+    with pytest.raises(McpClientError, match="lost after send"):
+        await client.start_conversation("gs://b/s.yaml")
+    assert attempts["n"] == 1
+
+
+async def test_upload_script_retries_connect_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Upload still retries failures that happen before the tool RPC."""
+    attempts = {"n": 0}
+
+    class _FakeClient:
+        def __init__(self, _url: str) -> None:
+            pass
+
+        async def __aenter__(self) -> _FakeClient:
+            attempts["n"] += 1
+            if attempts["n"] < 3:
+                raise ConnectionRefusedError("not yet")
+            return self
+
+        async def __aexit__(self, *_exc: object) -> None:
+            return None
+
+        async def call_tool(self, name: str, payload: dict[str, str]) -> MagicMock:
+            assert name == "upload_script"
+            assert "script" in payload
+            result = MagicMock()
+            result.data = {"script_id": "sid", "script_uri": "gs://b/s.yaml"}
+            result.structured_content = None
+            result.content = None
+            return result
+
+    monkeypatch.setattr("tts_audio_conversation.adk.mcp_client.Client", _FakeClient)
+    client = McpConversationClient("http://127.0.0.1:9/mcp", connect_retry_delay_sec=0.0)
+    data = await client.upload_script("title: x")
+    assert data["script_id"] == "sid"
+    assert attempts["n"] == 3
+
+
 def test_configure_mcp_client_override_and_clear() -> None:
     """Function tools use the installed client until it is cleared."""
     client = McpConversationClient("http://127.0.0.1:9/mcp")
