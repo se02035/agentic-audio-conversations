@@ -54,7 +54,12 @@ def build_a2a_app(
         A Starlette ASGI application exposing the A2A endpoints.
     """
     load_repo_dotenv()
-    cfg = settings or AgentSettings()
+    if settings is not None:
+        cfg = settings
+    elif built_agent is not None:
+        cfg = built_agent.settings
+    else:
+        cfg = AgentSettings()
     built = built_agent or build_app(cfg, download_bytes_fn=download_bytes_fn)
 
     if a2a_agent_endpoint is not None:
