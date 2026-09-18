@@ -33,6 +33,10 @@ from .mcp_toolset import RetryingMcpToolset
 
 APP_NAME = "adk"
 AGENT_NAME = "audio_overview"
+AGENT_DESCRIPTION = (
+    "Automated conversation and narration audio creator using Google Cloud "
+    "Text-to-Speech Chirp 3 HD voices in the EU regional endpoint."
+)
 
 
 @dataclass(frozen=True)
@@ -89,6 +93,7 @@ def build_app(
     )
     agent = LlmAgent(
         name=AGENT_NAME,
+        description=AGENT_DESCRIPTION,
         model=build_gemini(cfg),
         instruction=instruction_text(),
         tools=[

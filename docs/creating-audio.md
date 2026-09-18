@@ -114,6 +114,30 @@ VS Code: compound **Audio Overview: MCP + ADK Web** (MCP on 8000, ADK Web on 808
 
 Automated ADK tests that need the runtime spawn the real [`adk api_server`](https://adk.dev/runtime/api-server/) CLI (not `adk web`, not an in-process fake) against `src/tts_audio_conversation/adk` and drive `/list-apps`, session CRUD, `POST /run`, and artifacts over HTTP. Those tests live under `tests/integration/adk/` even when MCP TTS/GCS are mocked. Unit tests under `tests/unit/adk/` cover ingest/create tools, the LRO plugin, and the MCP client without starting the API server. Gemini is the configured live model on the Gemini LRO integration test.
 
+## ADK A2A agent
+
+Exposes the ADK `LlmAgent` over the [Agent2Agent (A2A) protocol](https://adk.dev/a2a/quickstart-exposing/#exposing-the-remote-agent-with-the-to_a2aroot_agent-function) via ADK's `to_a2a` function. The A2A agent runs as a Starlette ASGI application on Uvicorn (default port `8001`), exposing the public Agent Card endpoint at `/.well-known/agent-card.json` (and `/.well-known/agent.json` alias) and the JSON-RPC dispatch endpoint at `/`.
+
+```bash
+uv sync --extra adk --extra dev
+# .env: ADK_A2A_HOST=127.0.0.1, ADK_A2A_PORT=8001, AUDIO_CONVERSATION_MCP_URL=http://127.0.0.1:8000/mcp
+# Optional public endpoint / tunnel URL advertised in the agent card:
+# ADK_A2A_AGENT_ENDPOINT=https://my-tunnel.ngrok.app (or TUNNEL_ADDRESS=https://...)
+uv run tts-audio-conversation-mcp
+uv run python -m tts_audio_conversation.adk.a2a
+# Or with CLI endpoint flag:
+# uv run python -m tts_audio_conversation.adk.a2a --endpoint https://my-tunnel.ngrok.app
+# Or directly via Uvicorn:
+# uv run uvicorn tts_audio_conversation.adk.a2a:a2a_app --host 127.0.0.1 --port 8001
+```
+
+VS Code: compound **Audio Overview: MCP + A2A Agent** (MCP on 8000, A2A Agent on 8001) or standalone **ADK A2A: Audio Overview Agent**.
+
+Inspect the agent card:
+```bash
+curl http://127.0.0.1:8001/.well-known/agent-card.json
+```
+
 ## Live and slow tests
 
 Short live suites (ADC + EU bucket in `.env`):

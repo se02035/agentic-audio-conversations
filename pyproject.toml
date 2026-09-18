@@ -41,7 +41,7 @@ dev = [
     "pre-commit>=3.6.0",
 ]
 adk = [
-    "google-adk>=2.0.0",
+    "google-adk[a2a]>=2.0.0",
 ]
 
 [project.scripts]
