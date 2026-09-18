@@ -96,6 +96,22 @@
         "GOOGLE_GENAI_USE_ENTERPRISE": "true",
         "AUDIO_CONVERSATION_MCP_URL": "http://127.0.0.1:8000/mcp"
       }
+    },
+    {
+      "name": "ADK A2A: Audio Overview Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "tts_audio_conversation.adk.a2a",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "envFile": "${workspaceFolder}/.env",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "GOOGLE_CLOUD_LOCATION": "global",
+        "GOOGLE_GENAI_USE_VERTEXAI": "true",
+        "GOOGLE_GENAI_USE_ENTERPRISE": "true",
+        "AUDIO_CONVERSATION_MCP_URL": "http://127.0.0.1:8000/mcp"
+      }
     }
   ],
   "compounds": [
@@ -104,6 +120,14 @@
       "configurations": [
         "Audio Conversation: MCP HTTP",
         "ADK Web: Audio Overview Agent"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "Audio Overview: MCP + A2A Agent",
+      "configurations": [
+        "Audio Conversation: MCP HTTP",
+        "ADK A2A: Audio Overview Agent"
       ],
       "stopAll": true
     }

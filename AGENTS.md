@@ -18,7 +18,7 @@ Hatchling **src layout**, Python **>=3.11**, package `tts_audio_conversation`. I
 - [`src/tts_audio_conversation/logic/settings.py`](src/tts_audio_conversation/logic/settings.py) — env (`GOOGLE_CLOUD_PROJECT`, `AUDIO_CONVERSATION_*`, MCP bind, OTEL)
 - [`src/tts_audio_conversation/cli/`](src/tts_audio_conversation/cli/) — Click adapter (`uv run tts-audio-conversation`)
 - [`src/tts_audio_conversation/mcp/server.py`](src/tts_audio_conversation/mcp/server.py) — FastMCP HTTP tools at `/mcp` (thin adapter; jobs live in `logic/jobs/`)
-- [`src/tts_audio_conversation/adk/`](src/tts_audio_conversation/adk/) — ADK `LlmAgent` playground (`adk web`) and REST (`adk api_server`; optional extra `google-adk>=2.0.0`)
+- [`src/tts_audio_conversation/adk/`](src/tts_audio_conversation/adk/) — ADK `LlmAgent` playground (`adk web`), REST (`adk api_server`), and A2A (`a2a.py`; optional extra `google-adk[a2a]>=2.0.0`)
 - [`templates/`](templates/) — long-form sample scripts (slow live tests)
 - [`tests/unit/`](tests/unit/) — **unit** (mocked GCP: logic / cli / mcp; ADK tools/plugin/client — no `adk api_server` process)
 - [`tests/integration/`](tests/integration/) — **live** library facade / leaf GCP / real `adk api_server` (Gemini; MCP may be mocked)
@@ -69,7 +69,7 @@ Markers in [`pyproject.toml`](pyproject.toml); auto-applied in [`tests/conftest.
 | Live adapters | `uv run pytest -m "e2e and not slow"` | ADC + staging bucket |
 | Long-form (4 tests) | `uv run pytest -m slow -n 4` | **Always** use `-n 4` (pytest-xdist); only if the user asks |
 
-ADK layers: [`tests/unit/adk/`](tests/unit/adk/) covers ingest/create tools, the LRO plugin, MCP client, and `RetryingMcpToolset` without spawning `adk api_server`. [`tests/integration/adk/`](tests/integration/adk/) always uses the real CLI (`python -m google.adk.cli api_server`). Boot smoke uses a dummy MCP URL; the Gemini LRO test uses mocked MCP HTTP + fake TTS/GCS. Pointing that same API server at live MCP is a later e2e-style suite.
+ADK layers: [`tests/unit/adk/`](tests/unit/adk/) covers ingest/create tools, the LRO plugin, MCP client, `RetryingMcpToolset`, and `to_a2a` ASGI app wiring without spawning `adk api_server`. [`tests/integration/adk/`](tests/integration/adk/) uses the real CLI (`python -m google.adk.cli api_server`) or live A2A TCP server. Boot smoke uses a dummy MCP URL; the Gemini LRO test uses mocked MCP HTTP + fake TTS/GCS. Pointing that same API server at live MCP is a later e2e-style suite.
 
 ### Slow / long-form (parallel)
 

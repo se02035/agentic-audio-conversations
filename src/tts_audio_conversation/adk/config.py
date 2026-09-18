@@ -6,11 +6,14 @@ import os
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_MCP_URL = "http://127.0.0.1:8000/mcp"
 DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_A2A_HOST = "127.0.0.1"
+DEFAULT_A2A_PORT = 8001
+DEFAULT_A2A_PROTOCOL = "http"
 
 
 def repo_root() -> Path:
@@ -69,4 +72,26 @@ class AgentSettings(BaseSettings):
     audio_conversation_mcp_url: str = Field(default=DEFAULT_MCP_URL)
     audio_conversation_job_poll_interval_sec: float = Field(default=5.0, gt=0.0)
     audio_conversation_job_poll_timeout_sec: float = Field(default=1800.0, gt=0.0)
+    adk_a2a_host: str = Field(default=DEFAULT_A2A_HOST)
+    adk_a2a_port: int = Field(default=DEFAULT_A2A_PORT, ge=1, le=65535)
+    adk_a2a_protocol: str = Field(default=DEFAULT_A2A_PROTOCOL)
+    adk_a2a_rpc_path: str = Field(default="")
+    adk_a2a_agent_card_path: str | None = Field(default=None)
+    adk_a2a_agent_endpoint: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("adk_a2a_agent_endpoint", "a2a_agent_endpoint"),
+    )
+    adk_a2a_tunnel_address: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("adk_a2a_tunnel_address", "tunnel_address"),
+    )
     google_cloud_project: str | None = Field(default=None)
+
+    @property
+    def effective_a2a_agent_endpoint(self) -> str | None:
+        """Effective advertised endpoint URL for the A2A Agent Card if set."""
+        if self.adk_a2a_agent_endpoint:
+            return self.adk_a2a_agent_endpoint.rstrip("/")
+        if self.adk_a2a_tunnel_address:
+            return self.adk_a2a_tunnel_address.rstrip("/")
+        return None
